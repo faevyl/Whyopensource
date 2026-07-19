@@ -8,3 +8,6 @@ Wada if you are here for some apparent reason, sign in on neocities.org upload t
 
 also sorry sister if you see this
 why are you even on github though???
+
+official site by me is https://wwwwwhhhhhyyyyy.neocities.org/
+thats its for now
