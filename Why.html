@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!--
+  note: ui for the why proxy. works with steep-mud-5890 and misty-hall-e56e.
+  how to modify:
+    - change colors: edit the :root and html.theme-* css blocks
+    - change search engines: edit searchengine options in the js defaults
+    - add a new setting: add key to defaults, add html in settings panel, add logic in applysettings()
+    - change layout: edit css classes like .top-bar, .nav-bar, .home-screen
+    - add a new ui preset: add a new html.ui-* class and a new entry in ui_styles array
+    - proxy worker urls are at the top of burstnav() and burstpopup() functions
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title id="pageTitle">Why? Proxy</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--accent:#64b5f6;--accent2:#90caf9;--accent-dim:rgba(100,181,246,0.15);--bg:#060618;--surface:rgba(10,10,40,0.75);--surface-solid:#08082a;--surface2:#0f0f3a;--surface3:#1a1a4a;--border:rgba(100,181,246,0.12);--border2:rgba(100,181,246,0.25);--text:#e0edff;--text-dim:#6b85b0;--text-bright:#f0f6ff;--pink:#ff2d55;--cyan:#64b5f6;--cyan2:#90caf9;--radius:14px;--radius-sm:8px;--radius-pill:999px;--shadow:0 8px 32px rgba(0,0,0,0.6);--glow:0 0 20px rgba(100,181,246,0.2);--font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif}
+  /* note: theme colour presets. add new ones by copying this block and changing the name and colours. */
+  html.theme-sky{--accent:#64b5f6;--accent2:#90caf9;--accent-dim:rgba(100,181,246,0.15);--bg:#060618;--surface:rgba(10,10,40,0.75);--surface-solid:#08082a;--surface2:#0f0f3a;--surface3:#1a1a4a;--border:rgba(100,181,246,0.12);--border2:rgba(100,181,246,0.25);--text:#e0edff;--text-dim:#6b85b0;--text-bright:#f0f6ff;--glow:0 0 20px rgba(100,181,246,0.2)}
+  html.theme-purple{--accent:#a855f7;--accent2:#c084fc;--accent-dim:rgba(168,85,247,0.15);--bg:#0a0a18;--surface:rgba(20,10,40,0.8);--surface-solid:#0d0a1a;--surface2:#1a1035;--surface3:#2a1a4a;--border:rgba(168,85,247,0.15);--border2:rgba(168,85,247,0.3);--text:#e8e0ff;--text-dim:#7b6b9a;--text-bright:#f0e8ff;--glow:0 0 20px rgba(168,85,247,0.2)}
+  html.theme-matrix{--accent:#00ff00;--accent2:#33ff33;--accent-dim:rgba(0,255,0,0.15);--bg:#000a00;--surface:rgba(0,20,0,0.8);--surface-solid:#001400;--surface2:#002800;--surface3:#003a00;--border:rgba(0,255,0,0.15);--border2:rgba(0,255,0,0.3);--text:#00ffc0;--text-dim:#008800;--text-bright:#33ffaa;--glow:0 0 20px rgba(0,255,0,0.2)}
+  html.theme-midnight{--accent:#4488ff;--accent2:#66aaff;--accent-dim:rgba(68,136,255,0.15);--bg:#050520;--surface:rgba(8,8,40,0.8);--surface-solid:#08082a;--surface2:#10104a;--surface3:#1a1a5a;--border:rgba(68,136,255,0.15);--border2:rgba(68,136,255,0.3);--text:#c8d8ff;--text-dim:#5566aa;--text-bright:#e0e8ff;--glow:0 0 20px rgba(68,136,255,0.2)}
+  html.theme-sunset{--accent:#ff6633;--accent2:#ff8855;--accent-dim:rgba(255,102,51,0.15);--bg:#0f0505;--surface:rgba(30,15,10,0.8);--surface-solid:#1a0a0a;--surface2:#2a1510;--surface3:#3a2018;--border:rgba(255,102,51,0.15);--border2:rgba(255,102,51,0.3);--text:#ffe8d0;--text-dim:#ccaa88;--text-bright:#fff0e0;--glow:0 0 20px rgba(255,102,51,0.2)}
+  html,body{height:100%;min-height:100vh;min-height:-webkit-fill-available;overflow:hidden}
+  @supports(height:100dvh){html,body{height:100dvh}}
+  body{background:var(--bg);background-image:radial-gradient(ellipse at 20% 50%,rgba(100,181,246,0.05) 0%,transparent 50%),radial-gradient(ellipse at 80% 50%,rgba(30,60,120,0.06) 0%,transparent 50%);color:var(--text);font-family:var(--font);display:flex;flex-direction:column}
+  ::-webkit-scrollbar{width:4px;height:4px}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  .top-bar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:6px 12px;z-index:100;pointer-events:none;flex-shrink:0}
+  .top-bar>*{pointer-events:auto}
+  .top-brand{font-size:14px;font-weight:900;letter-spacing:2px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;display:flex;align-items:center;gap:6px}
+  .top-brand .tb-icon{font-size:16px}
+  .top-status{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text-dim);letter-spacing:.5px}
+  .status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;transition:background .3s;box-shadow:0 0 6px var(--accent)}
+  .status-dot.loading{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
+  .status-dot.error{background:var(--pink);box-shadow:0 0 6px var(--pink)}
+  .status-dot.hidden{opacity:0}
+  .main-area{flex:1;position:relative;overflow:hidden;margin-top:36px;margin-bottom:calc(80px + env(safe-area-inset-bottom,0px))}
+  /* note: home screen is the landing page with logo, search, quick links. */
+  .home-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;text-align:center;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fadeUp .6s ease}
+  .home-screen.hidden{display:none}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+  .home-brand{margin-bottom:16px}
+  .home-byline{font-size:10px;color:var(--text-dim);font-weight:500;letter-spacing:1px;margin-bottom:8px}
+  .home-logo{font-size:64px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--accent),var(--accent2),var(--pink),var(--cyan),var(--cyan2));background-size:300% 300%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shimmer 6s ease-in-out infinite;line-height:1.1}
+  @keyframes shimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+  .home-tagline{font-size:13px;color:var(--text-dim);margin:8px auto 0;font-weight:500;letter-spacing:.3px;max-width:360px;line-height:1.4;text-align:center;transition:opacity .4s ease}
+  .home-search-wrap{width:100%;max-width:480px;display:flex;margin-bottom:16px}
+  .home-search-wrap input{flex:1;padding:12px 16px;border-radius:var(--radius-pill) 0 0 var(--radius-pill);background:var(--surface-solid);border:1px solid var(--border);color:var(--text);font-size:15px;outline:none;transition:border-color .3s;-webkit-appearance:none}
+  .home-search-wrap input:focus{border-color:var(--accent)}
+  .home-search-wrap input::placeholder{color:var(--text-dim)}
+  .home-search-wrap button{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:0 var(--radius-pill) var(--radius-pill) 0;padding:0 24px;color:#0a0a14;font-weight:800;font-size:14px;cursor:pointer;transition:opacity .2s;-webkit-appearance:none}
+  .home-search-wrap button:active{opacity:.8}
+  .search-modes{display:flex;flex-direction:row;gap:6px;justify-content:center;margin-bottom:12px}
+  .search-mode-btn{padding:6px 16px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);transition:all .2s;-webkit-appearance:none;user-select:none}
+  .search-mode-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+  .search-mode-btn:hover{border-color:var(--border2)}
+  .quick-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:480px;width:100%}
+  .quick-links .ql-pill{padding:8px 16px;border-radius:var(--radius-pill);background:var(--surface-solid);border:1px solid var(--border);color:var(--text);cursor:pointer;font-size:13px;transition:all .2s;display:flex;align-items:center;gap:6px;-webkit-appearance:none;user-select:none;position:relative;overflow:hidden}
+  .quick-links .ql-pill::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--accent),var(--accent2));opacity:0;transition:opacity .3s;border-radius:inherit}
+  .quick-links .ql-pill:active::before{opacity:.12}
+  .quick-links .ql-pill:active{border-color:var(--accent);transform:scale(.96)}
+  .quick-links .ql-pill .qli{font-size:16px}
+  .content-area{width:100%;height:100%;position:relative}
+  .content-area iframe{width:100%;height:100%;border:none;display:none}
+  .content-area iframe.active{display:block}
+  .bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:200;display:flex;flex-direction:column;gap:4px;pointer-events:none;padding:0 12px calc(12px + env(safe-area-inset-bottom,0px))}
+  .bottom-bar>*{pointer-events:auto}
+  /* note: tab strip shows open tabs. tabs are stored in indexeddb for persistence. */
+  .tab-strip{display:flex;align-items:center;gap:4px;padding:6px 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--surface);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);scrollbar-width:none;flex-shrink:0}
+  .tab-strip::-webkit-scrollbar{display:none}
+  .tab-strip.hidden{display:none}
+  .tab-pill{display:flex;align-items:center;gap:4px;padding:4px 10px;font-size:11px;color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .2s;user-select:none;max-width:130px;min-width:0;-webkit-appearance:none}
+  .tab-pill:active{transform:scale(.95)}
+  .tab-pill.active{background:var(--surface3);color:var(--text-bright);border-color:var(--accent);box-shadow:var(--glow)}
+  .tab-pill .tp-title{overflow:hidden;text-overflow:ellipsis}
+  .tab-pill .tp-x{font-size:13px;line-height:1;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0 1px;-webkit-appearance:none}
+  .tab-pill .tp-x:active{color:var(--accent)}
+  .tab-add{width:26px;height:26px;border-radius:50%;background:none;border:1px dashed var(--border);color:var(--text-dim);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;-webkit-appearance:none}
+  .tab-add:active{border-color:var(--accent);color:var(--accent)}
+  .tab-dropdown{position:relative}
+  .tab-dropdown-btn{background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0 4px;font-size:14px;display:flex;align-items:center;-webkit-appearance:none}
+  .tab-dropdown-menu{position:absolute;bottom:100%;right:0;background:var(--surface-solid);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 0;min-width:120px;box-shadow:var(--shadow);display:none;z-index:50}
+  .tab-dropdown-menu.open{display:block}
+  .tab-dropdown-menu button{display:block;width:100%;background:none;border:none;color:var(--text);font-size:12px;padding:6px 14px;text-align:left;cursor:pointer;-webkit-appearance:none}
+  .tab-dropdown-menu button:active{background:var(--surface2);color:var(--accent)}
+  /* note: bookmark strip shows saved bookmarks inline. */
+  .bm-strip{display:flex;align-items:center;gap:4px;padding:4px 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:var(--surface);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);flex-shrink:0}
+  .bm-strip::-webkit-scrollbar{display:none}
+  .bm-strip.hidden{display:none}
+  .bm-pill{display:flex;align-items:center;gap:3px;padding:3px 10px;font-size:11px;color:var(--text-dim);cursor:pointer;border-radius:var(--radius-pill);white-space:nowrap;flex-shrink:0;border:1px solid transparent;transition:all .15s;user-select:none}
+  .bm-pill:active{background:var(--surface3);border-color:var(--border);color:var(--text)}
+  .bm-pill .bmi{font-size:12px}
+  .cmd-bar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);transition:border-color .3s}
+  .cmd-bar:focus-within{border-color:var(--accent);box-shadow:var(--shadow),var(--glow)}
+  .cmd-nav{display:flex;gap:2px;flex-shrink:0}
+  .cmd-btn{width:30px;height:30px;border-radius:var(--radius-sm);background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;-webkit-appearance:none}
+  .cmd-btn:active{background:var(--surface2);color:var(--text)}
+  .cmd-btn:disabled{opacity:.3;pointer-events:none}
+  .cmd-btn.accent{color:var(--accent)}
+  .cmd-btn.accent:active{background:var(--accent-dim)}
+  .cmd-btn.active-toggle{background:var(--accent-dim);color:var(--accent);border:1px solid var(--border2)}
+  .cmd-search{flex:1;display:flex;min-width:0}
+  .cmd-search input{flex:1;min-width:0;background:var(--surface2);border:1px solid transparent;border-radius:var(--radius-pill);padding:6px 12px;color:var(--text);font-size:13px;outline:none;transition:all .2s;-webkit-appearance:none}
+  .cmd-search input:focus{background:var(--surface-solid);border-color:var(--border2)}
+  .cmd-search input::placeholder{color:var(--text-dim)}
+  .cmd-go{display:none}
+  .cmd-actions{display:flex;gap:2px;flex-shrink:0}
+  .cmd-drawer{display:flex;align-items:center;gap:4px;padding:6px 8px;margin-top:4px;background:var(--surface);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius-sm);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;transition:all .25s ease}
+  .cmd-drawer::-webkit-scrollbar{display:none}
+  .cmd-drawer.hidden{display:none}
+  .cmd-drawer .dl-btn{padding:4px 10px;border-radius:var(--radius-pill);background:none;border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s;display:flex;align-items:center;gap:4px;-webkit-appearance:none}
+  .cmd-drawer .dl-btn:active{border-color:var(--accent);color:var(--text)}
+  .bottom-status{display:flex;align-items:center;justify-content:space-between;padding:2px 8px;font-size:9px;color:var(--text-dim);letter-spacing:.3px;gap:8px}
+  .bottom-status .bs-left{display:flex;align-items:center;gap:6px}
+  .bottom-status .bs-right{display:flex;align-items:center;gap:6px}
+  .connection-dot{width:4px;height:4px;border-radius:50%;display:inline-block}
+  .connection-dot.good{background:#22c55e;box-shadow:0 0 4px #22c55e}
+  .connection-dot.fair{background:#f59e0b;box-shadow:0 0 4px #f59e0b}
+  .connection-dot.poor{background:#ef4444;box-shadow:0 0 4px #ef4444}
+  .connection-ms{font-variant-numeric:tabular-nums}
+  .video-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:300;background:rgba(0,0,0,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);align-items:center;justify-content:center}
+  /* note: video overlay pops up when clicking youtube links. closes with the x button or esc key. */
+  .video-overlay.open{display:flex}
+  .video-overlay .vo-close{position:absolute;top:16px;right:16px;background:var(--surface);border:1px solid var(--border);color:var(--text);width:40px;height:40px;border-radius:50%;font-size:20px;cursor:pointer;z-index:301;display:flex;align-items:center;justify-content:center;transition:all .2s;-webkit-appearance:none}
+  .video-overlay .vo-close:active{background:var(--accent);border-color:var(--accent)}
+  .video-overlay .vo-frame-wrap{width:90%;max-width:960px;aspect-ratio:16/9;border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .video-overlay .vo-frame-wrap iframe{width:100%;height:100%;border:none}
+  .settings-mask{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity .35s ease}
+  .settings-mask.open{opacity:1;pointer-events:auto}
+  .settings-panel{position:fixed;top:0;right:0;bottom:0;width:420px;max-width:100vw;z-index:501;background:var(--surface-solid);border-left:1px solid var(--border);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .35s cubic-bezier(.22,1,.36,1);box-shadow:-8px 0 40px rgba(0,0,0,.3);max-height:100dvh}
+  .settings-panel.open{transform:translateX(0)}
+  .settings-panel::-webkit-scrollbar{width:4px}
+  .settings-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  .sp-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .sp-header h3{font-size:18px;font-weight:800;letter-spacing:.5px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+  .sp-header .sp-nav{display:flex;gap:6px}
+  .sp-header .sp-nav-btn{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;padding:4px 8px;border-radius:var(--radius-sm);-webkit-appearance:none}
+  .sp-header .sp-nav-btn.active{color:var(--accent);background:var(--accent-dim)}
+  .sp-close{width:32px;height:32px;border-radius:50%;background:none;border:1px solid var(--border);color:var(--text-dim);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;-webkit-appearance:none}
+  .sp-close:active{border-color:var(--accent);color:var(--accent)}
+  .sp-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 24px 24px}
+  .sp-body::-webkit-scrollbar{width:4px}
+  .sp-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  .sp-section{margin-bottom:20px}
+  .sp-section-title{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);font-weight:700}
+  .sp-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;gap:12px}
+  .sp-row label{font-size:13px;font-weight:500}
+  .sp-row .sp-desc{font-size:10px;color:var(--text-dim);margin-top:2px}
+  .sp-row select,.sp-row input[type="text"],.sp-row textarea{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:12px;outline:none;max-width:170px;-webkit-appearance:none}
+  .sp-row select:focus,.sp-row input[type="text"]:focus,.sp-row textarea:focus{border-color:var(--accent)}
+  .sp-row textarea{max-width:100%;width:100%;min-height:60px;resize:vertical;font-family:var(--font)}
+  .sp-toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+  .sp-toggle input{opacity:0;width:0;height:0}
+  .sp-toggle .sp-slider{position:absolute;inset:0;background:var(--border);border-radius:11px;cursor:pointer;transition:all .3s}
+  .sp-toggle .sp-slider::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:var(--text);border-radius:50%;transition:all .3s}
+  .sp-toggle input:checked+.sp-slider{background:var(--accent)}
+  .sp-toggle input:checked+.sp-slider::after{transform:translateX(18px)}
+  .sp-footer{padding:12px 24px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0}
+  .sp-footer button{flex:1;padding:8px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600;-webkit-appearance:none}
+  .sp-btn-secondary{background:var(--surface2);border:1px solid var(--border);color:var(--text)}
+  .sp-btn-danger{background:transparent;border:1px solid var(--pink);color:var(--pink)}
+  .sp-btn-accent{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#0a0a14}
+  .theme-swatches{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .theme-swatch{width:38px;height:38px;border-radius:50%;cursor:pointer;border:2px solid var(--border);transition:all .2s;flex-shrink:0;position:relative}
+  .theme-swatch:active{transform:scale(.9)}
+  .theme-swatch.active{border-color:var(--text);box-shadow:0 0 16px rgba(255,255,255,.15)}
+  .theme-swatch .sw-check{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6);opacity:0;transition:opacity .2s}
+  .theme-swatch.active .sw-check{opacity:1}
+  .ui-style-chips{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+  .ui-style-chip{padding:4px 10px;font-size:10px;font-weight:600;border-radius:var(--radius-pill);cursor:pointer;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);transition:all .2s;letter-spacing:.3px;text-transform:uppercase;-webkit-appearance:none;user-select:none}
+  .ui-style-chip:active{transform:scale(.93)}
+  .ui-style-chip.active{background:var(--accent);color:#0a0a14;border-color:var(--accent);box-shadow:0 0 12px var(--accent-dim)}
+  .viewer-count{display:inline-flex;align-items:center;gap:3px;font-size:9px;color:var(--text-dim);opacity:.7;letter-spacing:.3px}
+  .viewer-count .vc-dot{width:4px;height:4px;border-radius:50%;background:#22c55e;display:inline-block;animation:vcPulse 2s ease-in-out infinite}
+  .viewer-count .vc-num{font-weight:700;font-variant-numeric:tabular-nums}
+  @keyframes vcPulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .dl-item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px}
+  .dl-item:last-child{border-bottom:none}
+  .dl-icon{width:32px;height:32px;border-radius:var(--radius-sm);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+  .dl-info{flex:1;min-width:0}
+  .dl-info .dl-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)}
+  .dl-info .dl-meta{font-size:10px;color:var(--text-dim);margin-top:1px;display:flex;gap:8px}
+  .dl-actions{display:flex;gap:4px;flex-shrink:0}
+  .dl-actions button{width:26px;height:26px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;-webkit-appearance:none}
+  .dl-actions button:active{color:var(--text);border-color:var(--accent)}
+  .dl-empty{text-align:center;color:var(--text-dim);font-size:12px;padding:20px 0;font-style:italic}
+  .dl-progress{width:100%;height:3px;background:var(--border);border-radius:2px;margin-top:4px;overflow:hidden}
+  .dl-progress .dp-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
+  .cookie-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:11px;border-bottom:1px solid var(--border)}
+  .cookie-item .ci-name{font-weight:600;color:var(--text)}
+  .cookie-item .ci-value{color:var(--text-dim);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cookie-item .ci-del{background:none;border:none;color:var(--pink);cursor:pointer;font-size:14px;padding:0 4px;-webkit-appearance:none}
+  .block-page{display:none;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;color:var(--text)}
+  .block-page.open{display:flex}
+  .block-page .bp-icon{font-size:48px;margin-bottom:16px}
+  .block-page .bp-title{font-size:20px;font-weight:700;margin-bottom:8px}
+  .block-page .bp-desc{font-size:13px;color:var(--text-dim);margin-bottom:20px}
+  .block-page button{background:var(--accent);border:none;color:#0a0a14;padding:10px 24px;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;-webkit-appearance:none}
+  .about-overlay{display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);align-items:center;justify-content:center}
+  .about-overlay.open{display:flex}
+  .about-card{background:var(--surface-solid);border:1px solid var(--border);border-radius:var(--radius);padding:32px;max-width:360px;width:90%;text-align:center;box-shadow:var(--shadow)}
+  .about-card .ac-logo{font-size:36px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;margin-bottom:8px}
+  .about-card .ac-version{font-size:14px;color:var(--text-dim);margin-bottom:16px}
+  .about-card .ac-desc{font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:16px}
+  .about-card .ac-close{background:var(--accent);border:none;color:#0a0a14;padding:8px 24px;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;-webkit-appearance:none}
+  .toast{position:fixed;bottom:calc(100px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--surface-solid);border:1px solid var(--border);border-radius:var(--radius-pill);padding:8px 20px;font-size:12px;color:var(--text);z-index:700;opacity:0;transition:opacity .3s ease;pointer-events:none;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);white-space:nowrap}
+  .toast.show{opacity:1}
+  .bg-preview{width:100%;height:60px;border-radius:var(--radius-sm);background-size:cover;background-position:center;margin-top:8px;border:1px solid var(--border);display:none}
+  .bg-preview.show{display:block}
+  .bg-remove-btn{display:none;padding:4px 10px;border-radius:var(--radius-sm);background:var(--pink);border:none;color:#fff;font-size:10px;font-weight:600;cursor:pointer;margin-top:4px;-webkit-appearance:none}
+  .bg-remove-btn.show{display:inline-block}
+
+  html.ui-sharp{--radius:4px;--radius-sm:2px;--radius-pill:4px}
+  html.ui-sharp .tab-pill{border-radius:4px}
+  html.ui-sharp .tab-add{border-radius:4px}
+  html.ui-sharp .cmd-btn{border-radius:2px}
+  html.ui-sharp .cmd-search input{border-radius:4px}
+  html.ui-sharp .theme-swatch{border-radius:4px}
+  html.ui-sharp .sp-toggle .sp-slider{border-radius:3px}
+  html.ui-sharp .sp-toggle .sp-slider::after{border-radius:2px}
+  html.ui-sharp .tab-strip,html.ui-sharp .bm-strip,html.ui-sharp .cmd-bar{border-radius:4px}
+
+  html.ui-rounded{--radius:22px;--radius-sm:14px;--radius-pill:999px}
+  html.ui-rounded .tab-pill{border-radius:999px}
+  html.ui-rounded .tab-add{border-radius:50%}
+  html.ui-rounded .cmd-btn{border-radius:10px}
+  html.ui-rounded .cmd-search input{border-radius:999px}
+  html.ui-rounded .bm-pill{border-radius:999px}
+  html.ui-rounded .theme-swatch{border-radius:12px}
+
+  html.ui-minimal .tab-strip,html.ui-minimal .bm-strip{background:transparent;border:none;backdrop-filter:none}
+  html.ui-minimal .cmd-bar{background:transparent;border:none;backdrop-filter:none;box-shadow:none}
+  html.ui-minimal .tab-pill{background:transparent;border:none}
+  html.ui-minimal .tab-pill.active{background:transparent;border:none;box-shadow:none;color:var(--accent)}
+  html.ui-minimal .cmd-btn:active{background:transparent;color:var(--accent)}
+  html.ui-minimal .bm-pill:active{background:transparent;border-color:transparent;color:var(--accent)}
+  html.ui-minimal .tab-add{border:none}
+
+  html.ui-neon .tab-pill.active{box-shadow:0 0 20px var(--accent),0 0 40px var(--accent-dim);border-color:var(--accent)}
+  html.ui-neon .cmd-bar{box-shadow:0 0 30px var(--accent-dim),var(--shadow)}
+  html.ui-neon .cmd-bar:focus-within{box-shadow:0 0 30px var(--accent),0 0 60px var(--accent-dim)}
+  html.ui-neon .sp-toggle input:checked+.sp-slider{box-shadow:0 0 12px var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="top-bar">
+  <div class="top-brand"><span class="tb-icon">&#9889;</span>Why?</div>
+  <div class="top-status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusLabel">Ready</span>
+    <span class="viewer-count"><span class="vc-dot"></span> <span class="vc-num" id="viewerCount">0</span></span>
+  </div>
+</div>
+
+<!-- Main Area -->
+<div class="main-area" id="mainArea">
+
+  <!-- Home Screen -->
+  <div class="home-screen" id="homePage">
+    <div class="home-brand">
+      <div class="home-byline">Proxy Browser</div>
+      <div class="home-logo">Why?</div>
+      <div class="home-tagline" id="taglineRotator">Browse the open web, freely.</div>
+    </div>
+    <div class="search-modes" id="searchModes">
+      <button class="search-mode-btn active" data-mode="web">Web</button>
+      <button class="search-mode-btn" data-mode="images">Images</button>
+      <button class="search-mode-btn" data-mode="videos">Videos</button>
+    </div>
+    <div class="home-search-wrap">
+      <input type="text" id="homeSearch" placeholder="Search or enter URL..." autofocus>
+      <button onclick="whyNavigate(document.getElementById('homeSearch').value)">Go</button>
+    </div>
+    <div class="quick-links" id="quickLinks">
+      <button class="ql-pill" data-url="https://www.google.com"><span class="qli">G</span>Google</button>
+      <button class="ql-pill" data-url="https://www.youtube.com"><span class="qli">&#9654;</span>YouTube</button>
+      <button class="ql-pill" data-url="https://www.wikipedia.org"><span class="qli">W</span>Wikipedia</button>
+      <button class="ql-pill" data-url="https://www.reddit.com"><span class="qli">R</span>Reddit</button>
+      <button class="ql-pill" data-url="https://www.github.com"><span class="qli">&#60;&#62;</span>GitHub</button>
+      <button class="ql-pill" data-url="https://www.duckduckgo.com"><span class="qli">D</span>DuckDuckGo</button>
+    </div>
+  </div>
+
+  <!-- content area: the iframe where proxied pages are loaded -->
+  <div class="content-area" id="contentArea">
+    <iframe id="proxyFrame" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-orientation-lock" loading="lazy"></iframe>
+  </div>
+
+  <!-- Block Page -->
+  <div class="block-page" id="blockPage">
+    <div class="bp-icon">&#128274;</div>
+    <div class="bp-title">Domain Blocked</div>
+    <div class="bp-desc" id="blockPageDesc">This domain is in your blacklist.</div>
+    <button onclick="whyGoHome()">Go Home</button>
+  </div>
+</div>
+
+<!-- video overlay: pops up when clicking a youtube link, plays the video in an embedded iframe -->
+<div class="video-overlay" id="videoOverlay">
+  <button class="vo-close" onclick="document.getElementById('videoOverlay').classList.remove('open')">&times;</button>
+  <div class="vo-frame-wrap"><iframe id="vpFrame" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>
+</div>
+
+<!-- Bottom Bar -->
+<div class="bottom-bar" id="bottomBar">
+  <!-- Tab Strip -->
+  <div class="tab-strip hidden" id="tabBar">
+    <div class="tab-dropdown">
+      <button class="tab-dropdown-btn" id="tabDropdownBtn">&#8942;</button>
+      <div class="tab-dropdown-menu" id="tabDropdownMenu">
+        <button id="closeOtherTabs">Close others</button>
+        <button id="closeAllTabs">Close all</button>
+      </div>
+    </div>
+    <div id="tabContainer" style="display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;flex:1"></div>
+    <button class="tab-add" id="newTabBtn">+</button>
+  </div>
+
+  <!-- Bookmark Strip -->
+  <div class="bm-strip hidden" id="bookmarkBar"></div>
+
+  <!-- Command Bar -->
+  <div class="cmd-bar" id="cmdBar">
+    <div class="cmd-nav">
+      <button class="cmd-btn" id="backBtn" disabled>&#9664;</button>
+      <button class="cmd-btn" id="fwdBtn" disabled>&#9654;</button>
+      <button class="cmd-btn" id="refreshBtn">&#8635;</button>
+    </div>
+    <div class="cmd-search">
+      <input type="text" id="urlInput" placeholder="Enter URL..." autocomplete="off" spellcheck="false">
+    </div>
+    <button class="cmd-btn accent" id="goBtn">&#10148;</button>
+    <div class="cmd-actions">
+      <button class="cmd-btn" id="homeBtn" title="Home">&#8962;</button>
+      <button class="cmd-btn" id="forceDeviceBtn" title="Toggle Force PC/Mobile">&#128241;</button>
+      <button class="cmd-btn" id="readerBtn" title="Reader Mode">&#9776;</button>
+      <button class="cmd-btn" id="bookmarkBtn" title="Bookmarks">&#9733;</button>
+      <button class="cmd-btn" id="fullscreenBtn" title="Fullscreen">&#9974;</button>
+      <button class="cmd-btn" id="settingsBtn" title="Settings">&#9881;</button>
+    </div>
+  </div>
+
+  <!-- bottom status: connection latency, viewer count, version info -->
+  <div class="bottom-status" id="bottomStatus">
+    <div class="bs-left">
+      <span class="connection-dot good" id="connDot"></span>
+      <span class="connection-ms" id="connMs">&lt;1ms</span>
+      <span id="bottomStatusText">Ready</span>
+    </div>
+    <div class="bs-right">
+      <span id="bottomTabInfo"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Panel -->
+<div class="settings-mask" id="settingsMask" onclick="whyCloseSettings()"></div>
+<div class="settings-panel" id="settingsPanel">
+  <div class="sp-header">
+    <h3>Settings</h3>
+    <div class="sp-nav" id="settingsNav">
+      <button class="sp-nav-btn active" data-tab="general">Gen</button>
+      <button class="sp-nav-btn" data-tab="privacy">Priv</button>
+      <button class="sp-nav-btn" data-tab="appearance">App</button>
+      <button class="sp-nav-btn" data-tab="data">Data</button>
+    </div>
+    <button class="sp-close" onclick="whyCloseSettings()">&times;</button>
+  </div>
+  <div class="sp-body" id="settingsBody">
+    <!-- general: proxy urls, search engine, encode mode, force device -->
+    <div class="sp-settings-tab" id="tab-general">
+      <div class="sp-section">
+        <div class="sp-section-title">Proxy</div>
+        <div class="sp-row"><label>Proxy URL</label><input type="text" id="proxyUrl" placeholder="https://..." style="max-width:200px"></div>
+        <div class="sp-row"><label>Fallback Proxy</label><input type="text" id="proxyUrl2" placeholder="https://..." style="max-width:200px"></div>
+        <div class="sp-row"><label>Search Engine</label>
+          <select id="searchEngine"><option value="brave">Brave</option><option value="google">Google</option><option value="duckduckgo">DuckDuckGo</option><option value="qwant">Qwant</option><option value="searx">SearX</option><option value="mojeek">Mojeek</option><option value="bing">Bing</option></select>
+        </div>
+        <div class="sp-row"><label>Encode Mode</label>
+          <select id="encodeMode"><option value="base64">Base64</option><option value="plain">Plain</option><option value="double64">Double Base64</option></select>
+        </div>
+        <div class="sp-row"><label>Force Device</label>
+          <select id="forceDevice"><option value="auto">Auto</option><option value="mobile">Force Mobile</option><option value="pc">Force PC</option></select>
+        </div>
+      </div>
+    </div>
+    <!-- privacy: ads, images, dark reader, cache bust, incognito -->
+    <div class="sp-settings-tab hidden" id="tab-privacy">
+      <div class="sp-section">
+        <div class="sp-section-title">Privacy & Security</div>
+        <div class="sp-row"><label>Block Ads</label><label class="sp-toggle"><input type="checkbox" id="blockAds"><span class="sp-slider"></span></label></div>
+        <div class="sp-row"><label>Strip Images</label><label class="sp-toggle"><input type="checkbox" id="stripImages"><span class="sp-slider"></span></label></div>
+        <div class="sp-row"><label>Dark Reader</label><label class="sp-toggle"><input type="checkbox" id="darkReader"><span class="sp-slider"></span></label></div>
+        <div class="sp-row"><label>Cache Bust</label><label class="sp-toggle"><input type="checkbox" id="cacheBust"><span class="sp-slider"></span></label></div>
+        <div class="sp-row"><label>Incognito Mode</label><label class="sp-toggle"><input type="checkbox" id="incognito"><span class="sp-slider"></span></label></div>
+      </div>
+    </div>
+    <!-- appearance: theme, ui style, background, custom css -->
+    <div class="sp-settings-tab hidden" id="tab-appearance">
+      <div class="sp-section">
+        <div class="sp-section-title">Theme</div>
+        <div class="theme-swatches" id="themeSwatches"></div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-title">UI Style</div>
+        <div class="ui-style-chips" id="uiStyleChips"></div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-title">Background</div>
+        <div class="sp-row"><label>Upload Image</label><input type="file" id="bgUpload" accept="image/*" style="font-size:11px;max-width:160px"></div>
+        <div class="bg-preview" id="bgPreview"></div>
+        <button class="bg-remove-btn" id="bgRemoveBtn">Remove Background</button>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-title">Custom CSS</div>
+        <div class="sp-row" style="flex-direction:column;align-items:stretch">
+          <textarea id="customCSS" placeholder="Enter custom CSS to inject into pages..."></textarea>
+        </div>
+      </div>
+    </div>
+    <!-- data: blacklist, cookies, download manager -->
+    <div class="sp-settings-tab hidden" id="tab-data">
+      <div class="sp-section">
+        <div class="sp-section-title">Domain Blacklist</div>
+        <div class="sp-row" style="flex-direction:column;align-items:stretch">
+          <textarea id="blacklist" placeholder="One domain per line (e.g. example.com)"></textarea>
+        </div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-title">Cookies</div>
+        <div id="cookieList"></div>
+        <button class="sp-btn-danger" onclick="whyClearAllCookies()" style="padding:6px 12px;border-radius:var(--radius-sm);font-size:11px;border:1px solid var(--pink);background:transparent;color:var(--pink);cursor:pointer;margin-top:4px">Clear All Cookies</button>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-title">Download Manager</div>
+        <div id="downloadList"></div>
+      </div>
+    </div>
+  </div>
+  <div class="sp-footer">
+    <button class="sp-btn-secondary" onclick="whyResetSettings()">Reset</button>
+    <button class="sp-btn-secondary" onclick="whyShowAbout()">About</button>
+  </div>
+</div>
+
+<!-- about overlay: shown when clicking the about button in settings -->
+<div class="about-overlay" id="aboutOverlay">
+  <div class="about-card">
+    <div class="ac-logo">Why?</div>
+    <div class="ac-version">Why? v1.0</div>
+    <div class="ac-desc">A privacy-focused proxy browser. Browse the open web freely with advanced features including ad blocking, reader mode, multi-tab browsing, and more.</div>
+    <button class="ac-close" onclick="document.getElementById('aboutOverlay').classList.remove('open')">Close</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ── Tagline Rotator ──
+  var TAGLINES = [
+    'Browse the open web, freely.',
+    'Privacy-first proxy browsing.',
+    'Your gateway to the open web.',
+    'Bypass barriers. Browse freely.',
+    'Why limit yourself?',
+    'Fast, private, unrestricted.',
+    'The web, without walls.'
+  ];
+  var taglineIdx = 0;
+  setInterval(function(){
+    taglineIdx = (taglineIdx + 1) % TAGLINES.length;
+    var el = document.getElementById('taglineRotator');
+    if(el){ el.style.opacity = '0'; setTimeout(function(){ el.textContent = TAGLINES[taglineIdx]; el.style.opacity = '1'; }, 300); }
+  }, 4000);
+
+  // ── Base64 helpers ──
+  function b64safe(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+  function b64unsafe(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='='; return decodeURIComponent(escape(atob(s))); }
+
+  // ── settings ──
+  // note: default settings. edit this object to change defaults or add new settings.
+  // how to add a new setting: add a key:value here, add html in the settings panel, and handle it in applysettings().
+  var STORAGE_KEY = 'why_settings_v1';
+  var defaultSettings = {
+    proxyUrl: 'https://shy-tooth-2b5b.kristenvnguyen.workers.dev/?url=',
+    proxyUrl2: 'https://dawn-recipe-6092.kristenvnguyen.workers.dev/?url=',
+    searchEngine: 'brave',
+    encodeMode: 'base64',
+    forceDevice: 'mobile',
+    blockAds: false,
+    stripImages: false,
+    readableMode: false,
+    cacheBust: false,
+    blacklist: '',
+    customCSS: '',
+    theme: 'sky',
+    uiStyle: 'glass',
+    incognito: false,
+    darkReader: false,
+    showBookmarks: true,
+    customBg: ''
+  };
+  var settings = loadSettings();
+  var tabs = [{ title: 'New Tab', url: '' }];
+  var activeTab = 0;
+  var history = [];
+  var historyIdx = -1;
+  var bookmarks = loadBookmarks();
+  var tabHistory = {};
+
+  // note: loads settings from localstorage. falls back to defaults if missing.
+  function loadSettings(){
+    try{
+      var s = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if(!s) return JSON.parse(JSON.stringify(defaultSettings));
+      for(var k in defaultSettings){ if(s[k]===undefined) s[k]=defaultSettings[k]; }
+      return s;
+    }catch(e){ return JSON.parse(JSON.stringify(defaultSettings)); }
+  }
+  // note: saves current settings to localstorage.
+  function saveSettings(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); }catch(e){}
+  }
+
+  function loadBookmarks(){
+    try{ return JSON.parse(localStorage.getItem('why_bookmarks_v1')) || []; }catch(e){ return []; }
+  }
+  function saveBookmarks(){
+    try{ localStorage.setItem('why_bookmarks_v1', JSON.stringify(bookmarks)); }catch(e){}
+  }
+
+  // ── search engines ──
+  // note: edit these urls to add/change search engines. one entry per engine per mode.
+  // how to add a new engine: add an entry to search, search_image, and search_video, then add it to the settings html dropdown.
+  var SEARCH = {
+    searx: 'https://searx.oloke.xyz/search?q=',
+    mojeek: 'https://www.mojeek.com/search?theme=dark&q=',
+    qwant: 'https://lite.qwant.com/?q=',
+    google: 'https://www.google.com/search?igu=1&q=',
+    duckduckgo: 'https://lite.duckduckgo.com/lite/?q=',
+    bing: 'https://www.bing.com/search?q=',
+    brave: 'https://search.brave.com/search?q='
+  };
+  var SEARCH_IMAGE = {
+    google: 'https://www.google.com/search?tbm=isch&q=',
+    duckduckgo: 'https://duckduckgo.com/?iax=images&ia=images&q=',
+    brave: 'https://search.brave.com/images?q='
+  };
+  var SEARCH_VIDEO = {
+    google: 'https://www.google.com/search?tbm=vid&q=',
+    duckduckgo: 'https://duckduckgo.com/?iax=videos&ia=videos&q=',
+    brave: 'https://search.brave.com/videos?q='
+  };
+  var searchMode = 'web';
+
+  // ── Connection quality ──
+  function pingWorker(){
+    var start = Date.now();
+    var w = settings.proxyUrl || defaultSettings.proxyUrl;
+    fetch(w.replace(/\?url=.*$/,'').replace(/\/+$/,'') + '/__why/info', { method:'GET', mode:'cors', cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(){
+        var ms = Date.now() - start;
+        var dot = document.getElementById('connDot');
+        var msEl = document.getElementById('connMs');
+        if(msEl) msEl.textContent = ms + 'ms';
+        if(dot){
+          if(ms < 300) dot.className = 'connection-dot good';
+          else if(ms < 800) dot.className = 'connection-dot fair';
+          else dot.className = 'connection-dot poor';
+        }
+      })
+      .catch(function(){
+        var dot = document.getElementById('connDot');
+        if(dot) dot.className = 'connection-dot poor';
+        var msEl = document.getElementById('connMs');
+        if(msEl) msEl.textContent = 'N/A';
+      });
+  }
+  setInterval(pingWorker, 30000);
+  setTimeout(pingWorker, 1000);
+
+  // ── Viewer Counter ──
+  function pingViewer(){
+    var w = settings.proxyUrl || defaultSettings.proxyUrl;
+    fetch(w.replace(/\?url=.*$/,'').replace(/\/+$/,'') + '/__vcount', { method:'GET', mode:'cors', cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d.count!==undefined){ document.getElementById('viewerCount').textContent = d.count; } })
+      .catch(function(){});
+  }
+  setInterval(pingViewer, 20000);
+  setTimeout(pingViewer, 2000);
+
+  // ── Search mode pills ──
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('.search-mode-btn');
+    if(!btn) return;
+    document.querySelectorAll('.search-mode-btn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    searchMode = btn.dataset.mode;
+    try{ localStorage.setItem('why_search_mode', searchMode); }catch(e){}
+  });
+  try{ var savedMode = localStorage.getItem('why_search_mode'); if(savedMode) searchMode = savedMode; }catch(e){}
+
+  // ── Quick links ──
+  document.addEventListener('click', function(e){
+    var pill = e.target.closest('.ql-pill');
+    if(!pill) return;
+    whyNavigate(pill.dataset.url);
+  });
+
+  // ── Navigation ──
+  window.whyNavigate = function(value){
+    if(!value) return;
+    value = value.trim();
+    if(!value) return;
+    var isUrl = /^https?:\/\//i.test(value) || (/^[^\s]+\.[a-z]{2,}/i.test(value) && !value.includes(' '));
+    if(isUrl){
+      if(!/^https?:\/\//i.test(value)) value = 'https://' + value;
+      loadProxy(value);
+    } else {
+      var searchUrl = SEARCH[settings.searchEngine] || SEARCH.brave;
+      if(searchMode === 'images'){
+        var imgEng = SEARCH_IMAGE[settings.searchEngine] || SEARCH_IMAGE.brave || searchUrl;
+        loadProxy(imgEng + encodeURIComponent(value));
+      } else if(searchMode === 'videos'){
+        var vidEng = SEARCH_VIDEO[settings.searchEngine] || SEARCH_VIDEO.brave || searchUrl;
+        loadProxy(vidEng + encodeURIComponent(value));
+      } else {
+        loadProxy(searchUrl + encodeURIComponent(value));
+      }
+    }
+  };
+
+  // ── Build Proxy URL ──
+  function buildProxyUrl(rawUrl){
+    try{
+      var w = settings.proxyUrl || defaultSettings.proxyUrl;
+      var mode = settings.encodeMode || 'base64';
+      var enc;
+      if(mode === 'plain') enc = encodeURIComponent(rawUrl);
+      else if(mode === 'double64') enc = encodeURIComponent(b64safe(b64safe(rawUrl)));
+      else enc = encodeURIComponent(b64safe(rawUrl));
+      var b = w.replace(/\/+$/, '');
+      if(b.includes('?url=')) b = b.replace(/\?url=.*$/, '') + '?__pot=' + enc;
+      else if(b.includes('__pot=')) b = b.replace(/__pot=[^&]*/, '__pot=' + enc);
+      else b += (b.includes('?') ? '&' : '?') + '__pot=' + enc;
+      if(settings.darkReader) b += '&dark=1';
+      var _d = (/iPad|iPhone|iPod/.test(navigator.userAgent) || /Android/.test(navigator.userAgent) || (navigator.maxTouchPoints > 0 && screen.width < 1024) ? 'tablet' : 'desktop');
+      b += '&device=' + _d;
+      if(settings.forceDevice === 'mobile') b += '&mode=force_mobile';
+      else if(settings.forceDevice === 'pc') b += '&mode=force_pc';
+      if(settings.blockAds) b += '&block_ads=1';
+      if(settings.stripImages) b += '&strip_images=1';
+      if(settings.readableMode) b += '&readable=1';
+      if(settings.cacheBust) b += '&_cb=' + Date.now();
+      if(settings.customCSS) b += '&css=' + encodeURIComponent(b64safe(settings.customCSS));
+      return b;
+    }catch(e){ return rawUrl; }
+  }
+
+  // ── Load proxy URL ──
+  var historyStack = [];
+  var historyPosition = -1;
+
+  // note: main proxy navigation function. builds the proxy url and loads it in an iframe.
+  // how to change worker urls: edit the proxyurl and proxyurl2 variables below.
+  function loadProxy(url){
+    // Check blacklist
+    var bl = (settings.blacklist || '').split('\n').map(function(s){ return s.trim().toLowerCase(); }).filter(Boolean);
+    var domain = '';
+    try{ domain = new URL(url).hostname.toLowerCase(); }catch(e){ domain = url.toLowerCase(); }
+    for(var i=0; i<bl.length; i++){
+      if(domain === bl[i] || domain.endsWith('.' + bl[i])){
+        showBlockPage(bl[i]);
+        return;
+      }
+    }
+
+    var pu = buildProxyUrl(url);
+    var frame = document.getElementById('proxyFrame');
+    var home = document.getElementById('homePage');
+    var bp = document.getElementById('blockPage');
+    var input = document.getElementById('urlInput');
+    if(bp) bp.classList.remove('open');
+    if(home) home.classList.add('hidden');
+    if(frame){
+      frame.classList.add('active');
+      frame.src = pu;
+    }
+    if(input) input.value = url;
+
+    // History
+    if(historyPosition < historyStack.length - 1) historyStack = historyStack.slice(0, historyPosition + 1);
+    historyStack.push(url);
+    historyPosition = historyStack.length - 1;
+    updateNavButtons();
+
+    tabs[activeTab].url = url;
+    tabs[activeTab].title = url;
+    updateTabs();
+
+    setStatus('loading');
+    saveTabs();
+  }
+
+  function showBlockPage(domain){
+    var home = document.getElementById('homePage');
+    var frame = document.getElementById('proxyFrame');
+    var bp = document.getElementById('blockPage');
+    var desc = document.getElementById('blockPageDesc');
+    if(home) home.classList.add('hidden');
+    if(frame) frame.classList.remove('active');
+    if(bp){ bp.classList.add('open'); if(desc) desc.textContent = 'The domain "' + domain + '" is in your blacklist.'; }
+    setStatus('idle');
+  }
+
+  window.whyGoHome = function(){
+    var home = document.getElementById('homePage');
+    var frame = document.getElementById('proxyFrame');
+    var bp = document.getElementById('blockPage');
+    if(home) home.classList.remove('hidden');
+    if(frame) frame.classList.remove('active');
+    if(bp) bp.classList.remove('open');
+    var input = document.getElementById('urlInput');
+    if(input) input.value = '';
+    setStatus('idle');
+  };
+
+  function goBack(){
+    if(historyPosition > 0){
+      historyPosition--;
+      loadProxySilent(historyStack[historyPosition]);
+      updateNavButtons();
+    }
+  }
+  function goForward(){
+    if(historyPosition < historyStack.length - 1){
+      historyPosition++;
+      loadProxySilent(historyStack[historyPosition]);
+      updateNavButtons();
+    }
+  }
+  function loadProxySilent(url){
+    var pu = buildProxyUrl(url);
+    var frame = document.getElementById('proxyFrame');
+    var input = document.getElementById('urlInput');
+    if(frame){ frame.classList.add('active'); frame.src = pu; }
+    if(input) input.value = url;
+    tabs[activeTab].url = url;
+    tabs[activeTab].title = url;
+    updateTabs();
+    setStatus('loading');
+  }
+
+  function updateNavButtons(){
+    document.getElementById('backBtn').disabled = historyPosition <= 0;
+    document.getElementById('fwdBtn').disabled = historyPosition >= historyStack.length - 1;
+  }
+
+  function setStatus(s){
+    var dot = document.getElementById('statusDot');
+    var label = document.getElementById('statusLabel');
+    var bst = document.getElementById('bottomStatusText');
+    if(!dot) return;
+    dot.className = 'status-dot';
+    if(s === 'loading'){ dot.classList.add('loading'); if(label) label.textContent = 'Loading'; if(bst) bst.textContent = 'Loading...'; }
+    else if(s === 'error'){ dot.classList.add('error'); if(label) label.textContent = 'Error'; if(bst) bst.textContent = 'Connection error'; }
+    else { if(label) label.textContent = 'Connected'; if(bst) bst.textContent = 'Ready'; }
+  }
+
+  // ── Tab Management ──
+  function updateTabs(){
+    var container = document.getElementById('tabContainer');
+    if(!container) return;
+    container.innerHTML = '';
+    tabs.forEach(function(tab, i){
+      var pill = document.createElement('button');
+      pill.className = 'tab-pill' + (i === activeTab ? ' active' : '');
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'tp-title';
+      titleSpan.textContent = tab.title || 'New Tab';
+      pill.appendChild(titleSpan);
+      var closeBtn = document.createElement('span');
+      closeBtn.className = 'tp-x';
+      closeBtn.textContent = '\u00D7';
+      closeBtn.onclick = function(e){ e.stopPropagation(); closeTab(i); };
+      pill.appendChild(closeBtn);
+      pill.onclick = function(){ switchTab(i); };
+      container.appendChild(pill);
+    });
+    var tb = document.getElementById('tabBar');
+    if(tabs.length > 1) tb.classList.remove('hidden');
+    else tb.classList.add('hidden');
+  }
+
+  function switchTab(i){
+    if(i === activeTab) return;
+    // Save current tab state
+    var frame = document.getElementById('proxyFrame');
+    if(frame && frame.src && frame.src !== 'about:blank'){
+      tabs[activeTab].savedSrc = frame.src;
+    }
+    activeTab = i;
+    updateTabs();
+    restoreTab(i);
+    updateNavButtons();
+  }
+
+  function restoreTab(i){
+    var tab = tabs[i];
+    var home = document.getElementById('homePage');
+    var frame = document.getElementById('proxyFrame');
+    var bp = document.getElementById('blockPage');
+    var input = document.getElementById('urlInput');
+    if(bp) bp.classList.remove('open');
+    if(tab.url){
+      if(home) home.classList.add('hidden');
+      if(frame){
+        frame.classList.add('active');
+        frame.src = tab.savedSrc || buildProxyUrl(tab.url);
+      }
+      if(input) input.value = tab.url;
+      // Restore history position
+      var idx = historyStack.indexOf(tab.url);
+      if(idx >= 0) historyPosition = idx;
+      setStatus('idle');
+    } else {
+      if(home) home.classList.remove('hidden');
+      if(frame) frame.classList.remove('active');
+      if(input) input.value = '';
+      setStatus('idle');
+    }
+  }
+
+  function newTab(){
+    tabs.push({ title: 'New Tab', url: '', savedSrc: '' });
+    activeTab = tabs.length - 1;
+    updateTabs();
+    restoreTab(activeTab);
+    saveTabs();
+  }
+
+  function closeTab(i){
+    if(tabs.length <= 1) return;
+    tabs.splice(i, 1);
+    if(activeTab >= tabs.length) activeTab = tabs.length - 1;
+    updateTabs();
+    restoreTab(activeTab);
+    saveTabs();
+  }
+
+  function closeOtherTabs(){
+    if(tabs.length <= 1) return;
+    var current = tabs[activeTab];
+    tabs = [current];
+    activeTab = 0;
+    updateTabs();
+    restoreTab(0);
+    saveTabs();
+    document.getElementById('tabDropdownMenu').classList.remove('open');
+  }
+
+  function closeAllTabs(){
+    tabs = [{ title: 'New Tab', url: '', savedSrc: '' }];
+    activeTab = 0;
+    updateTabs();
+    restoreTab(0);
+    saveTabs();
+    document.getElementById('tabDropdownMenu').classList.remove('open');
+  }
+
+  // ── Tab Persistence (localStorage) ──
+  function saveTabs(){
+    try{
+      var data = tabs.map(function(t){ return { title: t.title, url: t.url, savedSrc: t.savedSrc }; });
+      localStorage.setItem('why_tabs_v1', JSON.stringify(data));
+      localStorage.setItem('why_active_tab_v1', activeTab);
+      localStorage.setItem('why_history_v1', JSON.stringify(historyStack));
+      localStorage.setItem('why_history_pos_v1', historyPosition);
+    }catch(e){}
+  }
+  // note: loads tabs from indexeddb on startup.
+  // how tab persistence works: tab urls are stored in indexeddb and restored on page load.
+  function loadTabs(){
+    try{
+      var data = JSON.parse(localStorage.getItem('why_tabs_v1'));
+      if(data && data.length > 0){ tabs = data; activeTab = parseInt(localStorage.getItem('why_active_tab_v1')) || 0; }
+      var h = JSON.parse(localStorage.getItem('why_history_v1'));
+      if(h){ historyStack = h; historyPosition = parseInt(localStorage.getItem('why_history_pos_v1')) || -1; }
+    }catch(e){}
+  }
+  loadTabs();
+
+  // ── download manager (indexeddb) ──
+  // note: downloads are stored as blobs in indexeddb. never actually saved to disk.
+  // how to clear downloads: use the clear button in the downloads ui.
+  var DB_NAME = 'WhyDownloads';
+  var DB_VER = 1;
+  var db = null;
+  function openDB(cb){
+    if(db) return cb(db);
+    var req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = function(e){
+      var d = e.target.result;
+      if(!d.objectStoreNames.contains('downloads')){
+        d.createObjectStore('downloads', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = function(e){
+      db = e.target.result;
+      cb(db);
+    };
+    req.onerror = function(){ cb(null); };
+  }
+
+  function addDownload(name, size, blob){
+    openDB(function(d){
+      if(!d) return;
+      var tx = d.transaction('downloads', 'readwrite');
+      var store = tx.objectStore('downloads');
+      store.add({ name: name, size: size, date: new Date().toISOString(), blob: blob });
+    });
+  }
+
+  function getDownloads(cb){
+    openDB(function(d){
+      if(!d) return cb([]);
+      var tx = d.transaction('downloads', 'readonly');
+      var store = tx.objectStore('downloads');
+      var req = store.getAll();
+      req.onsuccess = function(){ cb(req.result || []); };
+      req.onerror = function(){ cb([]); };
+    });
+  }
+
+  function deleteDownload(id){
+    openDB(function(d){
+      if(!d) return;
+      var tx = d.transaction('downloads', 'readwrite');
+      tx.objectStore('downloads').delete(id);
+    });
+    renderDownloads();
+  }
+
+  function renderDownloads(){
+    getDownloads(function(dl){
+      var el = document.getElementById('downloadList');
+      if(!el) return;
+      if(!dl || dl.length === 0){
+        el.innerHTML = '<div class="dl-empty">No downloads yet</div>';
+        return;
+      }
+      var html = '';
+      dl.forEach(function(item){
+        var sizeStr = item.size > 1048576 ? (item.size/1048576).toFixed(1)+'MB' : item.size > 1024 ? (item.size/1024).toFixed(1)+'KB' : item.size+'B';
+        html += '<div class="dl-item">' +
+          '<div class="dl-icon">&#128206;</div>' +
+          '<div class="dl-info"><div class="dl-name">' + escapeHtml(item.name) + '</div><div class="dl-meta"><span>' + sizeStr + '</span><span>' + (item.date || '') + '</span></div></div>' +
+          '<div class="dl-actions">' +
+          '<button onclick="whyOpenDownload(' + item.id + ')" title="Open">&#128065;</button>' +
+          '<button onclick="whyDeleteDownload(' + item.id + ')" title="Delete">&#128465;</button>' +
+          '</div></div>';
+      });
+      el.innerHTML = html;
+    });
+  }
+
+  window.whyOpenDownload = function(id){
+    openDB(function(d){
+      if(!d) return;
+      var tx = d.transaction('downloads', 'readonly');
+      var req = tx.objectStore('downloads').get(id);
+      req.onsuccess = function(){
+        var item = req.result;
+        if(item && item.blob){
+          var url = URL.createObjectURL(item.blob);
+          window.open(url);
+        }
+      };
+    });
+  };
+
+  window.whyDeleteDownload = function(id){
+    deleteDownload(id);
+  };
+
+  // ── Cookie Viewer ──
+  function renderCookies(){
+    var el = document.getElementById('cookieList');
+    if(!el) return;
+    // Use document.cookie
+    var cookies = document.cookie.split(';').filter(Boolean);
+    if(cookies.length === 0){
+      el.innerHTML = '<div class="dl-empty">No cookies</div>';
+      return;
+    }
+    var html = '';
+    cookies.forEach(function(c){
+      var parts = c.trim().split('=');
+      var name = parts[0];
+      var value = parts.slice(1).join('=');
+      html += '<div class="cookie-item"><span class="ci-name">' + escapeHtml(name) + '</span><span class="ci-value">' + escapeHtml(value) + '</span><button class="ci-del" onclick="whyDeleteCookie(\'' + escapeHtml(name) + '\')">&times;</button></div>';
+    });
+    el.innerHTML = html;
+  }
+
+  window.whyDeleteCookie = function(name){
+    document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    renderCookies();
+    whyToast('Cookie deleted');
+  };
+
+  window.whyClearAllCookies = function(){
+    var cookies = document.cookie.split(';').filter(Boolean);
+    cookies.forEach(function(c){
+      var name = c.trim().split('=')[0];
+      document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    });
+    renderCookies();
+    whyToast('All cookies cleared');
+  };
+
+  // ── settings ui ──
+  // note: applies all settings to the ui. add your new setting handler here.
+  // how to add a setting handler: add a new if/var block after the existing ones below.
+  function applySettings(){
+    // Apply theme
+    document.documentElement.className = '';
+    if(settings.theme && settings.theme !== '') document.documentElement.classList.add('theme-' + settings.theme);
+    document.documentElement.classList.add('ui-' + settings.uiStyle);
+
+    // Custom background
+    var bgPreview = document.getElementById('bgPreview');
+    if(settings.customBg && bgPreview){
+      bgPreview.style.backgroundImage = 'url(' + settings.customBg + ')';
+      bgPreview.classList.add('show');
+      document.getElementById('bgRemoveBtn').classList.add('show');
+    }
+
+    // Update force device button icon
+    updateForceDeviceBtn();
+    // Update reader mode button
+    updateReaderBtn();
+  }
+
+  function updateForceDeviceBtn(){
+    var btn = document.getElementById('forceDeviceBtn');
+    if(!btn) return;
+    if(settings.forceDevice === 'mobile'){
+      btn.textContent = '\uD83D\uDCF1';
+      btn.title = 'Force Mobile (active)';
+      btn.classList.add('active-toggle');
+    } else if(settings.forceDevice === 'pc'){
+      btn.textContent = '\uD83D\uDCBB';
+      btn.title = 'Force PC (active)';
+      btn.classList.remove('active-toggle');
+    } else {
+      btn.textContent = '\uD83D\uDCF1';
+      btn.title = 'Device: Auto';
+      btn.classList.remove('active-toggle');
+    }
+  }
+
+  function updateReaderBtn(){
+    var btn = document.getElementById('readerBtn');
+    if(!btn) return;
+    if(settings.readableMode){
+      btn.classList.add('active-toggle');
+    } else {
+      btn.classList.remove('active-toggle');
+    }
+  }
+
+  function syncSettingsToUI(){
+    document.getElementById('proxyUrl').value = settings.proxyUrl || '';
+    document.getElementById('proxyUrl2').value = settings.proxyUrl2 || '';
+    document.getElementById('searchEngine').value = settings.searchEngine || 'brave';
+    document.getElementById('encodeMode').value = settings.encodeMode || 'base64';
+    document.getElementById('forceDevice').value = settings.forceDevice || 'auto';
+    document.getElementById('blockAds').checked = !!settings.blockAds;
+    document.getElementById('stripImages').checked = !!settings.stripImages;
+    document.getElementById('darkReader').checked = !!settings.darkReader;
+    document.getElementById('cacheBust').checked = !!settings.cacheBust;
+    document.getElementById('incognito').checked = !!settings.incognito;
+    document.getElementById('blacklist').value = settings.blacklist || '';
+    document.getElementById('customCSS').value = settings.customCSS || '';
+    applySettings();
+  }
+
+  function syncUIToSettings(){
+    settings.proxyUrl = document.getElementById('proxyUrl').value;
+    settings.proxyUrl2 = document.getElementById('proxyUrl2').value;
+    settings.searchEngine = document.getElementById('searchEngine').value;
+    settings.encodeMode = document.getElementById('encodeMode').value;
+    settings.forceDevice = document.getElementById('forceDevice').value;
+    settings.blockAds = document.getElementById('blockAds').checked;
+    settings.stripImages = document.getElementById('stripImages').checked;
+    settings.darkReader = document.getElementById('darkReader').checked;
+    settings.cacheBust = document.getElementById('cacheBust').checked;
+    settings.incognito = document.getElementById('incognito').checked;
+    settings.blacklist = document.getElementById('blacklist').value;
+    settings.customCSS = document.getElementById('customCSS').value;
+    saveSettings();
+    updateForceDeviceBtn();
+  }
+
+  // note: initialises all settings ui elements and event listeners.
+  // how to add a new setting ui: add the html element to settings panel, then create the element reference + event listener here.
+  function initSettingsUI(){
+    var proxyUrlEl = document.getElementById('proxyUrl');
+    var proxyUrl2El = document.getElementById('proxyUrl2');
+    var searchEngineEl = document.getElementById('searchEngine');
+    var encodeModeEl = document.getElementById('encodeMode');
+    var forceDeviceEl = document.getElementById('forceDevice');
+    var blockAdsEl = document.getElementById('blockAds');
+    var stripImagesEl = document.getElementById('stripImages');
+    var darkReaderEl = document.getElementById('darkReader');
+    var cacheBustEl = document.getElementById('cacheBust');
+    var incognitoEl = document.getElementById('incognito');
+    var blacklistEl = document.getElementById('blacklist');
+    var customCSSEl = document.getElementById('customCSS');
+
+    var changeHandler = function(){ syncUIToSettings(); };
+    proxyUrlEl.addEventListener('change', changeHandler);
+    proxyUrl2El.addEventListener('change', changeHandler);
+    searchEngineEl.addEventListener('change', changeHandler);
+    encodeModeEl.addEventListener('change', changeHandler);
+    forceDeviceEl.addEventListener('change', changeHandler);
+    blockAdsEl.addEventListener('change', changeHandler);
+    stripImagesEl.addEventListener('change', changeHandler);
+    darkReaderEl.addEventListener('change', changeHandler);
+    cacheBustEl.addEventListener('change', changeHandler);
+    incognitoEl.addEventListener('change', changeHandler);
+    blacklistEl.addEventListener('change', changeHandler);
+    customCSSEl.addEventListener('change', changeHandler);
+
+    // note: theme swatches are rendered here. add new themes to the themes array below.
+    // how to add a new theme: add an entry to the themes array with id, label, bg, and accent.
+    var THEMES = [
+      { id:'sky', label:'Sky', bg:'#060618', accent:'#64b5f6' },
+      { id:'purple', label:'Purple', bg:'#0a0a18', accent:'#a855f7' },
+      { id:'matrix', label:'Matrix', bg:'#000a00', accent:'#00ff00' },
+      { id:'midnight', label:'Midnight', bg:'#050520', accent:'#4488ff' },
+      { id:'sunset', label:'Sunset', bg:'#0f0505', accent:'#ff6633' }
+    ];
+    var swatchContainer = document.getElementById('themeSwatches');
+    THEMES.forEach(function(t){
+      var sw = document.createElement('div');
+      sw.className = 'theme-swatch' + (settings.theme === t.id ? ' active' : '');
+      sw.style.background = 'linear-gradient(135deg, ' + t.bg + ', ' + t.accent + ')';
+      sw.innerHTML = '<span class="sw-check">&#10003;</span>';
+      sw.dataset.theme = t.id;
+      sw.onclick = function(){
+        settings.theme = t.id;
+        saveSettings();
+        applySettings();
+        document.querySelectorAll('.theme-swatch').forEach(function(s){ s.classList.remove('active'); });
+        sw.classList.add('active');
+      };
+      swatchContainer.appendChild(sw);
+    });
+
+    // note: ui preset chips (glass, sharp, rounded, minimal). add new presets to the ui_styles array.
+    // how to add a new ui preset: add an id and label to ui_styles, then add a matching html.ui-* css class.
+    // UI Style chips
+    var UI_STYLES = [
+      { id:'glass', label:'Glass' },
+      { id:'sharp', label:'Sharp' },
+      { id:'rounded', label:'Rounded' },
+      { id:'minimal', label:'Minimal' },
+      { id:'neon', label:'Neon' }
+    ];
+    var uiChips = document.getElementById('uiStyleChips');
+    UI_STYLES.forEach(function(s){
+      var chip = document.createElement('button');
+      chip.className = 'ui-style-chip' + (settings.uiStyle === s.id ? ' active' : '');
+      chip.textContent = s.label;
+      chip.dataset.style = s.id;
+      chip.onclick = function(){
+        settings.uiStyle = s.id;
+        saveSettings();
+        applySettings();
+        document.querySelectorAll('.ui-style-chip').forEach(function(c){ c.classList.remove('active'); });
+        chip.classList.add('active');
+      };
+      uiChips.appendChild(chip);
+    });
+
+    // Background upload
+    var bgInput = document.getElementById('bgUpload');
+    bgInput.addEventListener('change', function(e){
+      var file = e.target.files[0];
+      if(!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        settings.customBg = ev.target.result;
+        saveSettings();
+        var bp = document.getElementById('bgPreview');
+        bp.style.backgroundImage = 'url(' + ev.target.result + ')';
+        bp.classList.add('show');
+        document.getElementById('bgRemoveBtn').classList.add('show');
+        whyToast('Background set');
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('bgRemoveBtn').onclick = function(){
+      settings.customBg = '';
+      saveSettings();
+      var bp = document.getElementById('bgPreview');
+      bp.style.backgroundImage = '';
+      bp.classList.remove('show');
+      document.getElementById('bgRemoveBtn').classList.remove('show');
+      whyToast('Background removed');
+    };
+
+    syncSettingsToUI();
+  }
+
+  window.whyOpenSettings = function(){
+    document.getElementById('settingsMask').classList.add('open');
+    document.getElementById('settingsPanel').classList.add('open');
+    renderCookies();
+    renderDownloads();
+  };
+
+  window.whyCloseSettings = function(){
+    document.getElementById('settingsMask').classList.remove('open');
+    document.getElementById('settingsPanel').classList.remove('open');
+  };
+
+  window.whyResetSettings = function(){
+    settings = JSON.parse(JSON.stringify(defaultSettings));
+    saveSettings();
+    syncSettingsToUI();
+    whyToast('Settings reset');
+  };
+
+  window.whyShowAbout = function(){
+    document.getElementById('aboutOverlay').classList.add('open');
+  };
+
+  // ── Settings tab nav ──
+  document.querySelectorAll('.sp-nav-btn').forEach(function(btn){
+    btn.onclick = function(){
+      document.querySelectorAll('.sp-nav-btn').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelectorAll('.sp-settings-tab').forEach(function(t){ t.classList.add('hidden'); });
+      var tab = document.getElementById('tab-' + btn.dataset.tab);
+      if(tab) tab.classList.remove('hidden');
+    };
+  });
+
+  // ── Bookmark Bar ──
+  function renderBookmarkBar(){
+    var bar = document.getElementById('bookmarkBar');
+    if(!bar) return;
+    if(!settings.showBookmarks || bookmarks.length === 0){
+      bar.classList.add('hidden');
+      return;
+    }
+    bar.classList.remove('hidden');
+    bar.innerHTML = '';
+    bookmarks.forEach(function(bm, i){
+      var pill = document.createElement('button');
+      pill.className = 'bm-pill';
+      pill.innerHTML = '<span class="bmi">' + (bm.icon || '\u2605') + '</span>' + escapeHtml(bm.title || bm.url);
+      pill.onclick = function(){ whyNavigate(bm.url); };
+      bar.appendChild(pill);
+    });
+  }
+
+  // ── Toast ──
+  var toastTimer = null;
+  window.whyToast = function(msg){
+    var el = document.getElementById('toast');
+    if(!el) return;
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2500);
+  };
+
+  // ── Helpers ──
+  function escapeHtml(s){
+    if(!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // ── keyboard shortcuts ──
+  // note: ctrl+l=focus url bar, ctrl+t=new tab, ctrl+w=close tab, ctrl+r=refresh, esc=close overlays.
+  // how to add a new shortcut: add a new if case inside the keydown handler below.
+  document.addEventListener('keydown', function(e){
+    var ctrl = e.ctrlKey || e.metaKey;
+    if(ctrl && (e.key === 'l' || e.key === 'L')){
+      e.preventDefault();
+      var input = document.getElementById('urlInput') || document.getElementById('homeSearch');
+      if(input){ input.focus(); input.select(); }
+    }
+    if(ctrl && (e.key === 't' || e.key === 'T')){
+      e.preventDefault();
+      newTab();
+    }
+    if(ctrl && (e.key === 'w' || e.key === 'W')){
+      e.preventDefault();
+      closeTab(activeTab);
+    }
+    if(ctrl && (e.key === 'r' || e.key === 'R')){
+      e.preventDefault();
+      var frame = document.getElementById('proxyFrame');
+      if(frame && frame.src && frame.src !== 'about:blank'){
+        frame.src = frame.src;
+        setStatus('loading');
+      }
+    }
+    if(e.key === 'Escape'){
+      whyCloseSettings();
+      document.getElementById('aboutOverlay').classList.remove('open');
+    }
+  });
+
+  // ── event bindings ──
+  // note: on page load, binds ui elements and calls init functions.
+  document.addEventListener('DOMContentLoaded', function(){
+    // Home search
+    document.getElementById('homeSearch').addEventListener('keydown', function(e){
+      if(e.key === 'Enter') whyNavigate(this.value);
+    });
+    // URL input
+    document.getElementById('urlInput').addEventListener('keydown', function(e){
+      if(e.key === 'Enter') whyNavigate(this.value);
+    });
+    // Go button
+    document.getElementById('goBtn').onclick = function(){
+      whyNavigate(document.getElementById('urlInput').value);
+    };
+    // Nav buttons
+    document.getElementById('backBtn').onclick = goBack;
+    document.getElementById('fwdBtn').onclick = goForward;
+    document.getElementById('refreshBtn').onclick = function(){
+      var frame = document.getElementById('proxyFrame');
+      if(frame && frame.src && frame.src !== 'about:blank'){
+        frame.src = frame.src;
+        setStatus('loading');
+      }
+    };
+    document.getElementById('homeBtn').onclick = whyGoHome;
+    // Force device toggle
+    document.getElementById('forceDeviceBtn').onclick = function(){
+      if(settings.forceDevice === 'mobile') settings.forceDevice = 'pc';
+      else if(settings.forceDevice === 'pc') settings.forceDevice = 'auto';
+      else settings.forceDevice = 'mobile';
+      saveSettings();
+      updateForceDeviceBtn();
+      var f = document.getElementById('forceDevice');
+      if(f) f.value = settings.forceDevice;
+      whyToast('Device: ' + settings.forceDevice);
+    };
+    // Reader mode toggle
+    document.getElementById('readerBtn').onclick = function(){
+      settings.readableMode = !settings.readableMode;
+      saveSettings();
+      updateReaderBtn();
+      whyToast(settings.readableMode ? 'Reader mode on' : 'Reader mode off');
+      // Reload current page
+      var frame = document.getElementById('proxyFrame');
+      if(frame && frame.src && frame.src !== 'about:blank'){
+        var currentUrl = document.getElementById('urlInput').value;
+        if(currentUrl) loadProxy(currentUrl);
+      }
+    };
+    // Fullscreen
+    document.getElementById('fullscreenBtn').onclick = function(){
+      if(!document.fullscreenElement){
+        document.documentElement.requestFullscreen().catch(function(){});
+      } else {
+        document.exitFullscreen().catch(function(){});
+      }
+    };
+    // Settings
+    document.getElementById('settingsBtn').onclick = whyOpenSettings;
+    // New tab
+    document.getElementById('newTabBtn').onclick = newTab;
+    // Tab dropdown
+    document.getElementById('tabDropdownBtn').onclick = function(e){
+      e.stopPropagation();
+      var menu = document.getElementById('tabDropdownMenu');
+      menu.classList.toggle('open');
+    };
+    document.addEventListener('click', function(){
+      document.getElementById('tabDropdownMenu').classList.remove('open');
+    });
+    document.getElementById('closeOtherTabs').onclick = closeOtherTabs;
+    document.getElementById('closeAllTabs').onclick = closeAllTabs;
+    // Bookmark button
+    document.getElementById('bookmarkBtn').onclick = function(){
+      if(tabs[activeTab] && tabs[activeTab].url){
+        bookmarks.push({ title: tabs[activeTab].title || tabs[activeTab].url, url: tabs[activeTab].url, icon: '\u2605' });
+        saveBookmarks();
+        renderBookmarkBar();
+        whyToast('Bookmark added');
+      }
+    };
+
+    // Init frame message listener
+    window.addEventListener('message', function(e){
+      if(e.data && e.data.type === 'proxy:error'){
+        setStatus('error');
+      }
+    });
+
+    // Init
+    initSettingsUI();
+    renderBookmarkBar();
+    updateTabs();
+    updateNavButtons();
+    applySettings();
+
+    // Restore active tab if any
+    if(tabs[activeTab] && tabs[activeTab].url){
+      restoreTab(activeTab);
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
