@@ -10,4 +10,8 @@ also sorry sister if you see this
 why are you even on github though???
 
 official site by me is https://wwwwwhhhhhyyyyy.neocities.org/
-thats its for now
+also
+There is two ways of hosting this
+either use it in a static domain like github, neocities, whatever
+or if you are on pc, make a file call it whatever and make it a html file
+Put why.html code in there and copy path for your own client sided web proxy!!!1!
