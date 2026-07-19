@@ -6,3 +6,5 @@ I am owner of burst v2, burst v3 and Why? lmao also uhhh you may modify this and
 If you have any questions ask me i guess - sincerely michael n i guess
 Wada if you are here for some apparent reason, sign in on neocities.org upload the why.html or in index html and click the edit and you should show it to everybody, also its not yours, so if you want it to call it just call it a fork by (YOU.) and source code by me i guess.
 
+also sorry sister if you see this
+why are you even on github though???
