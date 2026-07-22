@@ -656,8 +656,6 @@
       else if(b.includes('__pot=')) b = b.replace(/__pot=[^&]*/, '__pot=' + enc);
       else b += (b.includes('?') ? '&' : '?') + '__pot=' + enc;
       if(settings.darkReader) b += '&dark=1';
-      var _d = (/iPad|iPhone|iPod/.test(navigator.userAgent) || /Android/.test(navigator.userAgent) || (navigator.maxTouchPoints > 0 && screen.width < 1024) ? 'tablet' : 'desktop');
-      b += '&device=' + _d;
       if(settings.forceDevice === 'mobile') b += '&mode=force_mobile';
       else if(settings.forceDevice === 'pc') b += '&mode=force_pc';
       if(settings.blockAds) b += '&block_ads=1';
