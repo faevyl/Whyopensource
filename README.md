@@ -4,7 +4,8 @@ Fallback requirements are cloudflare agents are NOT blocked and your filters/fil
 I will probably update this most of the time. Static files like neocitites were designed for this. There is no server setup. If you want the worker js for cloudflare you have to ask.
 I am owner of burst v2, burst v3 and Why? lmao also uhhh you may modify this and also read the license.
 If you have any questions ask me i guess - sincerely michael n i guess
-Wada if you are here for some apparent reason, sign in on neocities.org upload the why.html or in index html and click the edit and you should show it to everybody, also its not yours, so if you want it to call it just call it a fork by (YOU.) and source code by me i guess.
+Wada if you are here for some apparent reason, sign in on neocities.org upload the why.html or in index html and click the edit and you should show it to everybody, also its not yours, so if you want it to call it just call it a fork by (YOU.) and source code by me i guess. but you have to edit the code and change things n stuff.
+if you want to sell it tell me the domain name and ask for permission.
 
 also sorry sister if you see this
 why are you even on github though???
