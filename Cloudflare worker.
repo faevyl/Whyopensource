@@ -1,0 +1,590 @@
+/**
+ * why proxy worker
+ * workers: steep-mud-5890, misty-hall-e56e
+ *
+ * base: worker.js (v2) + why features layered on top.
+ * - ad blocking (&block_ads=1)
+ * - strip images (&strip_images=1)
+ * - readable mode (&readable=1)
+ * - dark mode (&dark=1)
+ * - viewer counter (/__vcount)
+ * - info endpoint (/__why/info)
+ * - 10 anti-detection features in interceptor
+ * - bigger storage / more relays
+ */
+
+const MAX_HTML = 10 * 1024 * 1024; // 10mb
+const RELAY_TIMEOUT = 8000;
+const CORS_RELAYS = [
+  'https://corsproxy.io/?url=',
+  'https://api.allorigins.win/raw?url=',
+  'https://api.cors.lol/?url=',
+  'https://webcache.googleusercontent.com/search?q=cache:',
+  'https://thingproxy.freeboard.io/fetch/',
+  'https://corsproxy.slyk.io/?url=',
+  'https://cors.anywhere.rhcloud.com/cors/get?url=',
+  'https://corsproxy.feroo.xyz/?url=',
+  'https://api.proxyscrape.com/v2/?request=getresponse&url=',
+];
+const CROXY_RELAYS = [
+  'https://108.181.34.71',
+  'https://108.181.6.9',
+  'https://198.23.160.245',
+];
+const UAS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36',
+];
+const CHALLENGE_RE = /(?:unusual traffic|Checking your browser|cf-browser-verification|Just a moment|DDoS protection|Attention Required.*Cloudflare|One last step|we are with security|bots aren't one of them|securely verifying|checking if the site connection is secure|verify your identity|are you a robot|enable javascript|Please turn JavaScript on|Browser check|Loading challenge|verifying you are human|security check|Access Denied|you have been blocked|your request has been blocked|sorry, you have been blocked|automated access|automated queries)/i;
+const BOT_RE = /(?:sign\s*in\s*to\s*confirm|confirm\s*you.+\s*not\s*a\s*bot|unusual\s*traffic|please\s*solve\s*the\s*challenge|verify\s*you.+\s*human|we\s*are\s*with\s*security|bots\s*aren.*t\s*one\s*of\s*them|blocked.*automated|detected.*automated|unable\s*to\s*verify\s*you)/i;
+const memCookies = new Map();
+let _dark = false;
+let _blockAds = false;
+let _stripImages = false;
+let _readable = false;
+
+// ── viewer counter ──
+const VIEWER_TTL = 60000;
+const viewers = new Map();
+let viewerCleanupTimer = null;
+function cleanupViewers() {
+  const now = Date.now();
+  for (const [ip, ts] of viewers) {
+    if (now - ts > VIEWER_TTL) viewers.delete(ip);
+  }
+}
+function getViewerKey(request) {
+  return request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || request.headers.get('X-Real-IP') || 'unknown';
+}
+
+function b64e(s) { return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function b64d(s) {
+  s = s.replace(/-/g,'+').replace(/_/g,'/');
+  while (s.length % 4) s += '=';
+  return decodeURIComponent(escape(atob(s)));
+}
+function cors() { return { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Max-Age': '86400' }; }
+function pickUA() { return UAS[Math.floor(Math.random() * UAS.length)]; }
+
+// ── Cookie Management ──
+function cookieDomain(urlStr) { try { return new URL(urlStr).hostname; } catch { return null; } }
+function getCookies(domain) {
+  if (!domain || !memCookies.has(domain)) return '';
+  const entries = memCookies.get(domain);
+  const now = Date.now();
+  const valid = [];
+  for (const [name, val, expires] of entries) {
+    if (expires === 0 || expires > now) valid.push(name + '=' + val);
+  }
+  if (valid.length === 0) { memCookies.delete(domain); return ''; }
+  return valid.join('; ');
+}
+function saveCookies(domain, resp) {
+  if (!domain) return;
+  if (!memCookies.has(domain)) memCookies.set(domain, []);
+  const store = memCookies.get(domain);
+  const now = Date.now();
+  let cookieHeaders = [];
+  if (typeof resp.headers.getSetCookie === 'function') {
+    cookieHeaders = resp.headers.getSetCookie();
+  } else {
+    const raw = resp.headers.get('Set-Cookie');
+    if (!raw) return;
+    cookieHeaders = raw.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  for (const cookie of cookieHeaders) {
+    const parts = cookie.split(';');
+    const nv = parts[0].trim().split('=');
+    if (nv.length < 2) continue;
+    const name = nv[0].trim();
+    const value = nv.slice(1).join('=').trim();
+    let expires = 0;
+    for (let i = 1; i < parts.length; i++) {
+      const kv = parts[i].trim().split('=');
+      const k = kv[0].trim().toLowerCase();
+      if (k === 'max-age' && kv[1]) expires = now + parseInt(kv[1].trim(), 10) * 1000;
+      else if (k === 'expires' && kv[1]) expires = new Date(kv.slice(1).join('=').trim()).getTime();
+    }
+    const idx = store.findIndex(e => e[0] === name);
+    if (idx !== -1) store.splice(idx, 1);
+    store.push([name, value, expires]);
+  }
+  const MAX_BYTES = 65536; // 64kb
+  while (store.length > 0) {
+    let total = 0;
+    for (const [n, v] of store) total += n.length + v.length + 1;
+    if (total <= MAX_BYTES) break;
+    store.shift();
+  }
+}
+
+function errPage(msg, status) {
+  const icon = status === 502 ? '\u26A0' : '\u274C';
+  const t = status === 502 ? 'Upstream Error' : status === 403 ? 'Blocked' : 'Error';
+  return new Response('<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + status + ' ' + t + '</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;background:#060618;overflow:hidden;position:relative}.orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.5;pointer-events:none}.orb1{width:400px;height:400px;background:#64b5f6;top:-100px;left:-100px}.orb2{width:350px;height:350px;background:#1a1a5a;bottom:-80px;right:-80px}.orb3{width:250px;height:250px;background:#2a2a7a;top:50%;left:50%;transform:translate(-50%,-50%)}.card{position:relative;background:rgba(10,10,40,.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(100,181,246,.18);border-radius:20px;padding:40px 48px;max-width:440px;width:90%;text-align:center;box-shadow:0 8px 48px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06)}.icon{font-size:48px;margin-bottom:16px;filter:drop-shadow(0 0 12px rgba(100,181,246,.4))}h1{font-size:22px;font-weight:700;margin:0 0 12px;color:#e0edff}.badge{display:inline-block;background:rgba(100,181,246,.12);border:1px solid rgba(100,181,246,.2);color:#90caf9;border-radius:8px;padding:3px 12px;font-size:11px;font-weight:600;letter-spacing:.5px;margin-bottom:20px;text-transform:uppercase}p{color:#6b85b0;font-size:14px;line-height:1.6;margin:0 0 28px;word-break:break-word}button{background:linear-gradient(135deg,rgba(100,181,246,.25),rgba(26,26,90,.15));border:1px solid rgba(100,181,246,.25);color:#e0edff;padding:10px 28px;border-radius:12px;cursor:pointer;font-size:14px;font-weight:600;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:all .2s ease;box-shadow:0 4px 16px rgba(100,181,246,.1)}button:hover{background:linear-gradient(135deg,rgba(100,181,246,.4),rgba(26,26,90,.25));border-color:rgba(100,181,246,.4);transform:translateY(-1px);box-shadow:0 6px 24px rgba(100,181,246,.2)}button:active{transform:translateY(0)}</style></head><body><div class="orb orb1"></div><div class="orb orb2"></div><div class="orb orb3"></div><div class="card"><script>try{parent.postMessage({type:\'why:error\',status:' + status + '},\'*\')}catch(e){}</script><div class="icon">' + icon + '</div><h1>' + t + '</h1><div class="badge">HTTP ' + status + '</div><p>' + msg + '</p><button onclick="top.location.href=top.location.origin">&larr; Return home</button></div></body></html>', { status, headers: { 'Content-Type': 'text/html;charset=utf-8', ...cors() } });
+}
+
+function browserHeaders(ua, targetDomain) {
+  const h = new Headers();
+  h.set('User-Agent', ua || pickUA());
+  h.set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8');
+  h.set('Accept-Language', 'en-US,en;q=0.9');
+  h.set('Accept-Encoding', 'gzip, deflate');
+  h.set('Sec-Fetch-Site', 'none');
+  h.set('Sec-Fetch-Mode', 'navigate');
+  if (targetDomain) {
+    const c = getCookies(targetDomain);
+    if (c) h.set('Cookie', c);
+  }
+  return h;
+}
+
+function corsUrl(base, target) {
+  if (base.includes('__cpo=')) return base + b64e(target);
+  return base + encodeURIComponent(target);
+}
+function croxyUrl(base, target) {
+  try {
+    const u = new URL(target);
+    return base + u.pathname + u.search + '&__cpo=' + b64e(u.origin);
+  } catch { return base + '/?__cpo=' + b64e(target); }
+}
+
+async function directFetch(url, ua, method, body, extraHeaders) {
+  const domain = cookieDomain(url);
+  const h = browserHeaders(ua, domain);
+  if (extraHeaders) {
+    for (const [k, v] of extraHeaders.entries()) {
+      if (k.toLowerCase() !== 'host' && k.toLowerCase() !== 'cookie' && k.toLowerCase() !== 'origin') h.set(k, v);
+    }
+  }
+  const opts = { method: method || 'GET', redirect: 'manual', signal: AbortSignal.timeout(15000), headers: h };
+  if (body) opts.body = body;
+  const resp = await fetch(url, opts);
+  saveCookies(domain, resp);
+  return resp;
+}
+
+function handleRedirect(resp, targetUrl, proxyPrefix) {
+  const loc = resp.headers.get('Location');
+  if (loc) {
+    const abs = new URL(loc, targetUrl).href;
+    const outH = new Headers(cors());
+    outH.set('Location', proxyPrefix + encodeURIComponent(b64e(abs)));
+    return new Response(null, { status: resp.status, statusText: resp.statusText, headers: outH });
+  }
+  return new Response(null, { status: resp.status, statusText: resp.statusText, headers: new Headers(cors()) });
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (request.method === 'OPTIONS') return new Response(null, { headers: cors() });
+
+    // ── why info endpoint ──
+    if (url.pathname === '/__why/info') {
+      return new Response(JSON.stringify({ version: 'Why? v1.0', status: 'ok' }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors() }
+      });
+    }
+
+    // ── viewer counter endpoint ──
+    if (url.pathname === '/__vcount') {
+      if (!viewerCleanupTimer) {
+        viewerCleanupTimer = setInterval(cleanupViewers, 15000);
+      }
+      const key = getViewerKey(request);
+      viewers.set(key, Date.now());
+      const count = viewers.size;
+      return new Response(JSON.stringify({ count, ok: true }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors() }
+      });
+    }
+
+    let target = url.searchParams.get('__pot') || url.searchParams.get('url') || url.searchParams.get('q') || url.searchParams.get('quest');
+    if (target && url.searchParams.has('__pot')) {
+      if (!/^https?:\/\//i.test(target)) {
+        try { target = b64d(target); }
+        catch {
+          target = url.searchParams.get('__pot').replace(/ /g, '+');
+          try { target = b64d(target); } catch { target = url.searchParams.get('__pot'); }
+        }
+      }
+    }
+    if (!target) {
+      const pathTarget = (url.pathname.slice(1) + url.search).replace(/^\/+/, '').trim();
+
+      if (!target && pathTarget && !/^https?:\/\//i.test(pathTarget) && request.headers.get('Referer')) {
+        try {
+          const refUrl = new URL(request.headers.get('Referer'));
+          const refPot = refUrl.searchParams.get('__pot') || refUrl.searchParams.get('url');
+          if (refPot) {
+            let refOrigin = refPot;
+            if (!/^https?:\/\//i.test(refOrigin)) {
+              try { refOrigin = b64d(refOrigin); } catch { try { refOrigin = b64d(refPot.replace(/ /g, '+')); } catch {} }
+            }
+            if (/^https?:\/\//i.test(refOrigin)) {
+              const orig = new URL(refOrigin).origin;
+              target = orig.replace(/\/+$/, '') + url.pathname + url.search;
+            }
+          }
+        } catch {}
+      }
+
+      if (!target && pathTarget && (/^https?:\/\//i.test(pathTarget) || /^[^\s]+\.[a-z]{2,}/i.test(pathTarget))) {
+        target = pathTarget;
+      }
+
+      if (!target) {
+        const cookie = request.headers.get('Cookie') || '';
+        const m = cookie.match(/(?:^|;\s*)_s=([^;]+)/);
+        if (m) { try { const orig = b64d(m[1]); target = orig.replace(/\/+$/, '') + '/' + pathTarget; } catch {} }
+      }
+    }
+    if (!target) return errPage('No target URL — use ?__pot= or ?url=', 400);
+    if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
+    let parsed;
+    try { parsed = new URL(target); } catch { return errPage('Invalid URL', 400); }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return errPage('Only HTTP/HTTPS', 400);
+
+    _dark = url.searchParams.get('dark') === '1';
+    _blockAds = url.searchParams.get('block_ads') === '1';
+    _stripImages = url.searchParams.get('strip_images') === '1';
+    _readable = url.searchParams.get('readable') === '1';
+    const r = await proxy(target, url.origin, request).catch(e => errPage('Proxy error: ' + e.message, 502));
+    return r || errPage('All fetch methods failed', 502);
+  },
+};
+
+async function proxy(targetUrl, workerOrigin, originalRequest) {
+  const proxyPrefix = workerOrigin + '/?__pot=';
+  let resp;
+  let fromCroxy = false;
+
+  let method = 'GET', body = null, extraHeaders = new Headers();
+  if (originalRequest) {
+    method = originalRequest.method || 'GET';
+    if (method !== 'GET' && method !== 'HEAD') {
+      try { body = await originalRequest.clone().text(); } catch {}
+      const ct = originalRequest.headers.get('Content-Type');
+      if (ct) extraHeaders.set('Content-Type', ct);
+    }
+  }
+
+  try { resp = await directFetch(targetUrl, null, method, body, extraHeaders); } catch {}
+  if (!resp || !resp.ok) { try { resp = await directFetch(targetUrl, pickUA(), method, body, extraHeaders); } catch {} }
+
+  if (resp && resp.status >= 300 && resp.status < 400) {
+    return handleRedirect(resp, targetUrl, proxyPrefix);
+  }
+
+  if (!resp || !resp.ok || resp.status === 403 || resp.status === 503 || resp.status === 400) {
+    resp = null;
+    for (const base of CORS_RELAYS) {
+      try {
+        const r = await fetch(corsUrl(base, targetUrl), { signal: AbortSignal.timeout(RELAY_TIMEOUT) });
+        if (r.ok) { resp = r; break; }
+      } catch {}
+    }
+    if (!resp) {
+      for (const base of CORS_RELAYS) {
+        try {
+          const r = await fetch(corsUrl(base, targetUrl), { signal: AbortSignal.timeout(RELAY_TIMEOUT) });
+          if (r.status >= 200 && r.status < 400) { resp = r; break; }
+        } catch {}
+      }
+    }
+  }
+
+  if (!resp || !resp.ok) {
+    for (const base of CROXY_RELAYS) {
+      try {
+        const r = await fetch(croxyUrl(base, targetUrl), { signal: AbortSignal.timeout(RELAY_TIMEOUT) });
+        if (r.ok) { resp = r; fromCroxy = true; break; }
+      } catch {}
+    }
+    if (!resp) {
+      for (const base of CROXY_RELAYS) {
+        try {
+          const r = await fetch(croxyUrl(base, targetUrl), { signal: AbortSignal.timeout(RELAY_TIMEOUT) });
+          if (r.status >= 200 && r.status < 400) { resp = r; fromCroxy = true; break; }
+        } catch {}
+      }
+    }
+  }
+
+  if (resp && resp.status >= 300 && resp.status < 400) {
+    return handleRedirect(resp, targetUrl, proxyPrefix);
+  }
+
+  if (!resp) return errPage('All fetch methods failed', 502);
+  if (!resp.ok) return errPage('Upstream returned HTTP ' + resp.status, resp.status);
+
+  const outH = new Headers(cors());
+  for (const h of ['Content-Type', 'Content-Length', 'Cache-Control', 'Accept-Ranges', 'Content-Encoding', 'Transfer-Encoding', 'ETag', 'Last-Modified']) {
+    const v = resp.headers.get(h);
+    if (v) outH.set(h, v);
+  }
+  let cookieValues = [];
+  if (typeof resp.headers.getSetCookie === 'function') {
+    cookieValues = resp.headers.getSetCookie();
+  } else {
+    for (const [name, value] of resp.headers.entries()) {
+      if (name.toLowerCase() === 'set-cookie') cookieValues.push(value);
+    }
+  }
+  for (const c of cookieValues) {
+    let rewritten = c.replace(/;\s*samesite\s*=\s*[^;]*/i, '; SameSite=None');
+    if (!rewritten.toLowerCase().includes('secure')) rewritten += '; Secure';
+    outH.append('Set-Cookie', rewritten);
+  }
+  outH.set('X-Frame-Options', 'ALLOWALL');
+  outH.set('Access-Control-Allow-Origin', '*');
+  for (const h of ['Content-Security-Policy', 'Strict-Transport-Security', 'Expect-CT']) outH.delete(h);
+  try {
+    const targetOrigin = new URL(targetUrl).origin;
+    outH.append('Set-Cookie', `_s=${b64e(targetOrigin)}; Path=/; Secure; SameSite=None; Max-Age=3600`);
+  } catch {}
+
+  const ct = (resp.headers.get('Content-Type') || '').toLowerCase();
+
+  if (ct.includes('text/css')) {
+    const cssBuf = await resp.arrayBuffer();
+    let css = new TextDecoder().decode(cssBuf);
+    css = rewriteCSS(css, targetUrl, proxyPrefix);
+    const enc = new TextEncoder().encode(css);
+    outH.set('Content-Length', enc.length.toString());
+    return new Response(enc, { status: resp.status, headers: outH });
+  }
+
+  if (!ct.includes('text/html') && !ct.includes('application/xhtml+xml')) {
+    return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: outH });
+  }
+  if (!resp.body) return new Response(null, { status: resp.status, headers: outH });
+
+  if (fromCroxy) {
+    return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: outH });
+  }
+
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.length;
+    if (total > MAX_HTML) break;
+  }
+  let html = new TextDecoder().decode(mergeU(chunks));
+
+  if (CHALLENGE_RE.test(html) && !BOT_RE.test(html.slice(0, 16384))) {
+    const enc = new TextEncoder().encode(html);
+    outH.set('Content-Length', enc.length.toString());
+    return new Response(enc, { status: resp.status, headers: outH });
+  }
+
+  if (html.includes('Origin DNS error') || html.includes('DNS_PROBE_FINISHED_NXDOMAIN')) {
+    return errPage('Could not resolve ' + new URL(targetUrl).hostname + '. Check the URL for typos.', 502);
+  }
+
+  html = rewrite(html, targetUrl, proxyPrefix, workerOrigin);
+
+  const enc = new TextEncoder().encode(html);
+  outH.set('Content-Length', enc.length.toString());
+  return new Response(enc, { status: resp.status, headers: outH });
+}
+
+// ── HTML Rewriting ──
+function rewrite(html, baseUrl, prefix, origin) {
+  let base;
+  try {
+    const u = new URL(baseUrl);
+    let dir = u.pathname;
+    if (dir.length > 1 && !dir.endsWith('/')) dir = dir.substring(0, dir.lastIndexOf('/') + 1);
+    base = u.origin + dir;
+  } catch { base = baseUrl.replace(/\/+$/, '') + '/'; }
+  const enc = (u) => prefix + encodeURIComponent(b64e(resolve(u, base)));
+
+  const parts = html.split(/(<script[\s>][\s\S]*?<\/script>)/gi);
+  for (let i = 0; i < parts.length; i++) {
+    if (/^<script[\s>]/i.test(parts[i])) continue;
+    let b = parts[i];
+    b = b.replace(/(href|src|action|data-href|data-src|data-url|poster|srcset|formaction|longdesc|background|data-srcset|manifest)\s*=\s*"([^"]*)"/gi, (m, attr, url) => {
+      url = url.trim();
+      if (!url || url.startsWith('#') || url.startsWith('javascript:') || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('about:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('ws:') || url.startsWith('wss:')) return m;
+      if (url.startsWith(origin + '/?') || url.startsWith('/?url=') || url.startsWith('/?__pot=')) return m;
+      const r = resolve(url, base);
+      return r ? attr + '="' + enc(r) + '"' : m;
+    });
+    b = b.replace(/(href|src|action|data-href|data-src|data-url|poster|srcset|formaction|longdesc|background|data-srcset|manifest)\s*=\s*'([^']*)'/gi, (m, attr, url) => {
+      url = url.trim();
+      if (!url || url.startsWith('#') || url.startsWith('javascript:') || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('about:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('ws:') || url.startsWith('wss:')) return m;
+      if (url.startsWith(origin + '/?') || url.startsWith('/?url=') || url.startsWith('/?__pot=')) return m;
+      const r = resolve(url, base);
+      return r ? attr + "='" + enc(r) + "'" : m;
+    });
+    b = b.replace(/url\s*\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi, (m, url) => {
+      url = url.trim();
+      if (!url || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('#') || url.startsWith('about:')) return m;
+      const r = resolve(url, base);
+      return r ? "url('" + enc(r) + "')" : m;
+    });
+    parts[i] = b;
+  }
+  html = parts.join('');
+  html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']refresh["'][^>]*>/gi, tag => tag.replace(/content\s*=\s*["']([^"']*)["']/gi, (m, c) => {
+    const p = c.split('url=');
+    if (p.length > 1) { const r = resolve(p[1].trim(), base); if (r) return 'content="' + p[0] + 'url=' + enc(r) + '"'; }
+    return m;
+  }));
+  html = html.replace(/<base[^>]*>/gi, '');
+
+  // ── block ads ──
+  if (_blockAds) {
+    html = html.replace(/<div[^>]*(?:id\s*=\s*["'][^"']*(?:ad|sponsor|promo)[^"']*["']|class\s*=\s*["'][^"']*(?:ad|sponsor|promo)[^"']*["'])[^>]*>[\s\S]*?<\/div>/gi, '');
+    html = html.replace(/<iframe[^>]*(?:id\s*=\s*["'][^"']*(?:ad|sponsor|promo)[^"']*["']|class\s*=\s*["'][^"']*(?:ad|sponsor|promo)[^"']*["'])[^>]*>[\s\S]*?<\/iframe>/gi, '');
+    html = html.replace(/<ins[^>]*class\s*=\s*["'][^"']*(?:adsbygoogle|ad)[^"']*["'][^>]*>[\s\S]*?<\/ins>/gi, '');
+    html = html.replace(/<div[^>]*(?:id\s*=\s*["'](?:google_ads|div-gpt|dfp|ad-container)[^"']*["']|class\s*=\s*["'][^"']*(?:google_ads|div-gpt|dfp|ad-container)[^"']*["'])[^>]*>[\s\S]*?<\/div>/gi, '');
+  }
+
+  // ── strip images ──
+  if (_stripImages) {
+    html = html.replace(/<img\b[^>]*>/gi, '');
+    html = html.replace(/background-image\s*:\s*[^;"]+;?/gi, '');
+    html = html.replace(/background\s*:\s*[^;"]*url\([^)]+\)[^;"]*;?/gi, '');
+  }
+
+  let pageOrigin;
+  try { pageOrigin = new URL(baseUrl).origin; } catch { pageOrigin = baseUrl; }
+  const P = prefix;
+  const interceptor = '<script>try{(function(){var O=' + JSON.stringify(pageOrigin) + ',P=' + JSON.stringify(P) +
+    ',_e=function(s){return encodeURIComponent(btoa(unescape(encodeURIComponent(s))).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,""))}' +
+    ',d=function(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";return decodeURIComponent(escape(atob(s)))}' +
+    ',pr=function(u){if(typeof u==="string"){if(u.startsWith("/?__pot=")||u.startsWith("/?url="))return u;if(u.startsWith(P))return u;var C=window.location.origin;if(u.startsWith(C)){var p=u.slice(C.length);if(p.startsWith("/"))return P+_e(O.replace(/\\/+$/,"")+p)}if(u.startsWith("/")&&!u.startsWith("//"))return P+_e(O.replace(/\\/+$/,"")+u);if(u.startsWith(O))return P+_e(u)}return u}' +
+    'var _ls=null;try{var _ld=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location),"href");if(_ld)_ls=_ld.set}catch(e){}' +
+    'function _nav(u){if(_ls)_ls.call(window.location,u);else window.location.assign(u)}' +
+    'var _f=window.fetch.bind(window);window.fetch=function(u,o){arguments[0]=pr(u);return _f.apply(this,arguments)};' +
+    'var _x=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){if(typeof u==="string")arguments[1]=pr(u);return _x.apply(this,arguments)};' +
+    'var _ps=history.pushState;history.pushState=function(s,t,u){if(u&&typeof u==="string")arguments[2]=pr(u);return _ps.apply(history,arguments)};' +
+    'var _rs=history.replaceState;history.replaceState=function(s,t,u){if(u&&typeof u==="string")arguments[2]=pr(u);return _rs.apply(history,arguments)};' +
+    'var _la=window.location.assign.bind(window.location);window.location.assign=function(u){return _la(typeof u==="string"?pr(u):u)};' +
+    'var _lr=window.location.replace.bind(window.location);window.location.replace=function(u){return _lr(typeof u==="string"?pr(u):u)};' +
+    'try{var _dh=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.location),"href");' +
+    'if(_dh&&_dh.set){Object.defineProperty(window.location,"href",{get:_dh.get,set:function(v){_dh.set.call(window.location,typeof v==="string"?pr(v):v)},configurable:true})}}catch(e){}' +
+    'var _wo=window.open.bind(window);window.open=function(u,n,s){if(typeof u==="string")return _wo(pr(u),n,s);return _wo(u,n,s)};' +
+    'document.addEventListener("click",function(e){var t=e.target.closest("a[href]");if(t){var h=t.getAttribute("href");if(h&&!h.startsWith("/?__pot=")&&!h.startsWith("/?url=")&&(h.startsWith("/")&&!h.startsWith("//")||h.startsWith(O))){e.preventDefault();' +
+    'var u=h.startsWith("/")?P+_e(O.replace(/\\/+$/,"")+h):P+_e(h);if(t.target==="_blank"||e.ctrlKey||e.metaKey){try{window.open(u)}catch(e){_nav(u)}}else{_nav(u)}}}},true);' +
+    'document.cookie="_s="+_e(O)+";path=/;max-age=3600";' +
+    'document.addEventListener("submit",function(e){var f=e.target;if(!f||!f.action)return;var a=f.action;' +
+    'if(a.includes("__pot=")||a.includes("url=")){' +
+    'var pp=a.match(/__pot=([^&]+)/)||a.match(/url=([^&]+)/);if(pp){' +
+    'try{var u=new URL(d(decodeURIComponent(pp[1])));var fd=new FormData(f);' +
+    'Array.from(fd).forEach(function(x){u.searchParams.set(x[0],x[1])});' +
+    'e.preventDefault();_nav(P+_e(u.href))}catch(ex){}}' +
+    '}else if((a.startsWith("/")&&!a.startsWith("//"))||a.startsWith(O)){e.preventDefault();' +
+    'var qs="",m=(f.method||"get").toLowerCase();' +
+    'if(m==="get"){try{var fd2=new FormData(f);var p=[];Array.from(fd2).forEach(function(x){p.push(encodeURIComponent(x[0])+"="+encodeURIComponent(x[1]))});' +
+    'if(p.length>0)qs="?"+p.join("&")}catch(e){}}' +
+    'var full=a.startsWith("/")?O.replace(/\\/+$/,"")+a+qs:a+qs;' +
+    '_nav(P+_e(full))}});' +
+    'try{sessionStorage.setItem("_s",O)}catch(e){}' +
+    // 1 — Block ServiceWorkers
+    'try{navigator.serviceWorker&&(navigator.serviceWorker.register=function(){return Promise.resolve()},navigator.serviceWorker.getRegistrations=function(){return Promise.resolve([])},navigator.serviceWorker.getRegistration=function(){return Promise.resolve(null)},navigator.serviceWorker.ready=Promise.resolve({active:{postMessage:function(){},addEventListener:function(){}}}))}catch(e){}' +
+    // 2 — Suppress noisy cross-origin console warnings/errors
+    'try{var _cw=console.warn;console.warn=function(){var m=arguments[0];if(m&&typeof m===\'string\'&&(m.indexOf(\'ResizeObserver\')>-1||m.indexOf(\'passive\')>-1||m.indexOf(\'cross-origin\')>-1))return;_cw.apply(console,arguments)};var _ce=console.error;console.error=function(){var m=arguments[0];if(m&&typeof m===\'string\'&&(m.indexOf(\'cross-origin\')>-1||m.indexOf(\'SecurityError\')>-1||m.indexOf(\'Blocked a frame\')>-1||m.indexOf(\'Permission denied\')>-1))return;_ce.apply(console,arguments)}}catch(e){}' +
+    // 3 — Auto-grant Permissions API
+    'try{document.permissions&&document.permissions.query&&(document.permissions.query=function(){return Promise.resolve({state:\'granted\',onchange:null})})}catch(e){}' +
+    // 4 — Fake Battery API
+    'try{navigator.getBattery=function(){return Promise.resolve({charging:true,chargingTime:0,dischargingTime:Infinity,level:1,onchargingchange:null,onchargingtimechange:null,ondischargingtimechange:null,onlevelchange:null})}}catch(e){}' +
+    // 5 — Normalise Performance.memory
+    'try{performance.memory&&(performance.memory={jsHeapSizeLimit:2172649472,totalJSHeapSize:10000000,usedJSHeapSize:8000000})}catch(e){}' +
+    // 6 — Fill chrome.runtime API
+    'try{window.chrome&&chrome.runtime&&(chrome.runtime.sendMessage=function(){},chrome.runtime.connect=function(){return{postMessage:function(){},addEventListener:function(){},disconnect:function(){}}},chrome.runtime.id=\'\')}catch(e){}' +
+    // 7 — Normalise hardwareConcurrency (8 cores)
+    'try{Object.defineProperty(navigator,\'hardwareConcurrency\',{get:function(){return 8}})}catch(e){}' +
+    // 8 — Normalise deviceMemory (8 GB)
+    'try{Object.defineProperty(navigator,\'deviceMemory\',{get:function(){return 8}})}catch(e){}' +
+    // 9 — Safe parent.postMessage
+    'try{window.parent&&window.parent!==window&&window.parent.postMessage&&(window.parent.postMessage=function(msg,target,transfer){try{window.postMessage(msg,\'*\',transfer)}catch(e){}})}catch(e){}' +
+    // 10 — Error-safe ResizeObserver
+    'try{var _OrigRO=window.ResizeObserver;if(_OrigRO){window.ResizeObserver=function(cb){return new _OrigRO(function(e,o){try{cb(e,o)}catch(ex){}})}}}catch(e){}' +
+    '})()</script>';
+  html = html.replace('</head>', interceptor + '</head>');
+
+  html = html.replace(/<div[^>]*class\s*=\s*["'][^"']*(?:cf-turnstile|g-recaptcha|grecaptcha-badge|h-captcha)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
+  html = html.replace(/<div[^>]+data-sitekey[\s\S]*?<\/div>/gi, '');
+  html = html.replace(/<script[^>]*src\s*=\s*["'][^"']*(?:challenges\.cloudflare\.com\/turnstile|google\.com\/recaptcha|gstatic\.com\/recaptcha|recaptcha\.net|hcaptcha\.com)[^"']*["'][^>]*>[\s\S]*?<\/script>/gi, '');
+  html = html.replace(/<style[^>]*>[\s\S]*?\.ytd-consent-bump-v2-renderer[\s\S]*?<\/style>/gi, '');
+  html = html.replace(/<tp-yt-paper-dialog[^>]*>[\s\S]*?<\/tp-yt-paper-dialog>/gi, '');
+  html = html.replace(/<div[^>]*(?:id\s*=\s*["']consent-bump["']|class\s*=\s*["'][^"']*consent-bump[^"']*["'])[^>]*>[\s\S]*?<\/div>/gi, '');
+  html = html.replace(/<div[^>]*aria-label\s*=\s*["'][^"']*(?:Sign in to confirm|confirm you.+\s*not\s*a\s*bot)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
+  html = html.replace(/<shreddit-experience-tree[^>]*>[\s\S]*?<\/shreddit-experience-tree>/gi, '');
+  html = html.replace(/<div[^>]*(?:id\s*=\s*["']verification-container["']|class\s*=\s*["'][^"']*challenge-container[^"']*["'])[^>]*>[\s\S]*?<\/div>/gi, '');
+  html = html.replace(/<div[^>]*class\s*=\s*["'][^"']*(?:g-recaptcha|h-captcha|cf-turnstile)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
+
+  if (_dark) {
+    const darkCSS = '<meta name="color-scheme" content="dark only">\n<style>\nhtml, body { background-color: #111 !important; color: #ddd !important; }\na { color: #8ab4f8 !important; }\nimg, video, canvas, [style*="background-image"] { filter: brightness(0.8) contrast(1.1) !important; }\n* { background-color: transparent !important; }\n[style*="background"], [style*="background-color"] { background-color: transparent !important; background: transparent !important; }\ndiv, section, article, header, footer, nav, aside, main { background-color: transparent !important; }\n</style>\n';
+    html = html.replace('</head>', darkCSS + '</head>');
+  }
+
+  if (_readable) {
+    const readableCSS = '<meta name="color-scheme" content="dark only">\n<style>\nbody { max-width: 800px !important; margin: 0 auto !important; font-size: 18px !important; line-height: 1.8 !important; color: #e0e0e0 !important; }\np { font-size: 18px !important; line-height: 1.8 !important; margin-bottom: 1.2em !important; }\nh1, h2, h3 { line-height: 1.3 !important; margin-top: 1.5em !important; }\n</style>\n';
+    html = html.replace('</head>', readableCSS + '</head>');
+  }
+
+  return html;
+}
+
+function resolve(url, base) {
+  if (!url || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('javascript:') || url.startsWith('about:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('ws:') || url.startsWith('wss:')) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('//')) return 'https:' + url;
+  try { return new URL(url, base).href; } catch { return null; }
+}
+
+function mergeU(arrs) {
+  const t = arrs.reduce((a, b) => a + b.length, 0);
+  const r = new Uint8Array(t);
+  let o = 0;
+  for (const a of arrs) { r.set(a, o); o += a.length; }
+  return r;
+}
+
+// ── CSS Rewriting ──
+function rewriteCSS(css, baseUrl, prefix) {
+  let base;
+  try {
+    const u = new URL(baseUrl);
+    let dir = u.pathname;
+    if (dir.length > 1 && !dir.endsWith('/')) dir = dir.substring(0, dir.lastIndexOf('/') + 1);
+    base = u.origin + dir;
+  } catch { base = baseUrl.replace(/\/+$/, '') + '/'; }
+  const enc = (u) => prefix + encodeURIComponent(b64e(resolve(u, base)));
+  css = css.replace(/@import\s+["']([^"']+)["']\s*[^;]*;/gi, (m, url) => {
+    url = url.trim();
+    if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http:') || url.startsWith('https:')) return m;
+    const r = resolve(url, base);
+    if (!r) return m;
+    const after = m.slice(m.indexOf(url) + url.length).replace(/^["']\s*/, '');
+    return '@import "' + enc(r) + '" ' + after;
+  });
+  css = css.replace(/@import\s+url\s*\(\s*["']?([^'")\s]+)["']?\s*\)\s*[^;]*;/gi, (m, url) => {
+    url = url.trim();
+    if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http:') || url.startsWith('https:')) return m;
+    const r = resolve(url, base);
+    if (!r) return m;
+    const after = m.slice(m.indexOf(')') + 1);
+    return '@import url("' + enc(r) + '")' + after;
+  });
+  css = css.replace(/url\(\s*["']?([^'")\s]+)["']?\s*\)/gi, (m, url) => {
+    url = url.trim();
+    if (!url || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('#') || url.startsWith('http:') || url.startsWith('https:')) return m;
+    const r = resolve(url, base);
+    return r ? "url('" + enc(r) + "')" : m;
+  });
+  return css;
+}
