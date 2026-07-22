@@ -4,6 +4,7 @@
 <!--
   note: ui for the why proxy. works with steep-mud-5890 and misty-hall-e56e.
   how to modify:
+    - dont skid, it has licenses.
     - change colors: edit the :root and html.theme-* css blocks
     - change search engines: edit searchengine options in the js defaults
     - add a new setting: add key to defaults, add html in settings panel, add logic in applysettings()
@@ -1425,10 +1426,11 @@
     updateNavButtons();
     applySettings();
 
-    // Restore active tab if any
-    if(tabs[activeTab] && tabs[activeTab].url){
-      restoreTab(activeTab);
-    }
+    // Always start on homepage — don't auto-restore any tab
+    document.getElementById('homePage').classList.remove('hidden');
+    var frame = document.getElementById('proxyFrame');
+    if(frame) frame.classList.remove('active');
+    renderTabs();
   });
 
 })();
