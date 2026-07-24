@@ -1,13 +1,12 @@
-this is paid btw not opensource with license
-sorry
-instead for people who will change the code and fork it for server proxies heres worker v2.
+
 /**
  * Cloudflare Worker
- *
+ * btw this is for forking and is burst v2, kinda compatable with why though.
  * relays, cookies, redirects, HTML rewriting, you should also probably remove the badge
+ *id recommend changing the things below const to what you want for max html
  */
 const MAX_HTML = 5 * 1024 * 1024;
-const RELAY_TIMEOUT = 8000;
+const RELAY_TIMEOUT = 4000;
 const CORS_RELAYS = [
   'https://corsproxy.io/?url=',
   'https://api.allorigins.win/raw?url=',
