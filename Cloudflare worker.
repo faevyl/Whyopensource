@@ -1,6 +1,6 @@
 /**
  * why proxy worker
- * workers: steep-mud-5890, misty-hall-e56e
+ * workers: steep-mud-5890.faevyl, misty-hall-e56e.faevyl
  *
  * base: worker.js (v2) + why features layered on top.
  * - ad blocking (&block_ads=1)
@@ -35,6 +35,8 @@ const UAS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0',
+];
+const MOBILE_UAS = [
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
   'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36',
 ];
@@ -67,7 +69,7 @@ function b64d(s) {
   return decodeURIComponent(escape(atob(s)));
 }
 function cors() { return { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Max-Age': '86400' }; }
-function pickUA() { return UAS[Math.floor(Math.random() * UAS.length)]; }
+function pickUA(mobile) { return (mobile ? MOBILE_UAS : UAS)[Math.floor(Math.random() * (mobile ? MOBILE_UAS : UAS).length)]; }
 
 // ── Cookie Management ──
 function cookieDomain(urlStr) { try { return new URL(urlStr).hostname; } catch { return null; } }
@@ -127,18 +129,14 @@ function errPage(msg, status) {
   return new Response('<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + status + ' ' + t + '</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;background:#060618;overflow:hidden;position:relative}.orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.5;pointer-events:none}.orb1{width:400px;height:400px;background:#64b5f6;top:-100px;left:-100px}.orb2{width:350px;height:350px;background:#1a1a5a;bottom:-80px;right:-80px}.orb3{width:250px;height:250px;background:#2a2a7a;top:50%;left:50%;transform:translate(-50%,-50%)}.card{position:relative;background:rgba(10,10,40,.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(100,181,246,.18);border-radius:20px;padding:40px 48px;max-width:440px;width:90%;text-align:center;box-shadow:0 8px 48px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06)}.icon{font-size:48px;margin-bottom:16px;filter:drop-shadow(0 0 12px rgba(100,181,246,.4))}h1{font-size:22px;font-weight:700;margin:0 0 12px;color:#e0edff}.badge{display:inline-block;background:rgba(100,181,246,.12);border:1px solid rgba(100,181,246,.2);color:#90caf9;border-radius:8px;padding:3px 12px;font-size:11px;font-weight:600;letter-spacing:.5px;margin-bottom:20px;text-transform:uppercase}p{color:#6b85b0;font-size:14px;line-height:1.6;margin:0 0 28px;word-break:break-word}button{background:linear-gradient(135deg,rgba(100,181,246,.25),rgba(26,26,90,.15));border:1px solid rgba(100,181,246,.25);color:#e0edff;padding:10px 28px;border-radius:12px;cursor:pointer;font-size:14px;font-weight:600;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:all .2s ease;box-shadow:0 4px 16px rgba(100,181,246,.1)}button:hover{background:linear-gradient(135deg,rgba(100,181,246,.4),rgba(26,26,90,.25));border-color:rgba(100,181,246,.4);transform:translateY(-1px);box-shadow:0 6px 24px rgba(100,181,246,.2)}button:active{transform:translateY(0)}</style></head><body><div class="orb orb1"></div><div class="orb orb2"></div><div class="orb orb3"></div><div class="card"><script>try{parent.postMessage({type:\'why:error\',status:' + status + '},\'*\')}catch(e){}</script><div class="icon">' + icon + '</div><h1>' + t + '</h1><div class="badge">HTTP ' + status + '</div><p>' + msg + '</p><button onclick="top.location.href=top.location.origin">&larr; Return home</button></div></body></html>', { status, headers: { 'Content-Type': 'text/html;charset=utf-8', ...cors() } });
 }
 
-function browserHeaders(ua, targetDomain) {
+function browserHeaders(useMobile) {
   const h = new Headers();
-  h.set('User-Agent', ua || pickUA());
+  h.set('User-Agent', pickUA(useMobile));
   h.set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8');
   h.set('Accept-Language', 'en-US,en;q=0.9');
   h.set('Accept-Encoding', 'gzip, deflate');
   h.set('Sec-Fetch-Site', 'none');
   h.set('Sec-Fetch-Mode', 'navigate');
-  if (targetDomain) {
-    const c = getCookies(targetDomain);
-    if (c) h.set('Cookie', c);
-  }
   return h;
 }
 
@@ -153,14 +151,16 @@ function croxyUrl(base, target) {
   } catch { return base + '/?__cpo=' + b64e(target); }
 }
 
-async function directFetch(url, ua, method, body, extraHeaders) {
+async function directFetch(url, useMobile, method, body, extraHeaders) {
   const domain = cookieDomain(url);
-  const h = browserHeaders(ua, domain);
+  const h = browserHeaders(useMobile);
   if (extraHeaders) {
     for (const [k, v] of extraHeaders.entries()) {
       if (k.toLowerCase() !== 'host' && k.toLowerCase() !== 'cookie' && k.toLowerCase() !== 'origin') h.set(k, v);
     }
   }
+  const c = getCookies(domain);
+  if (c) h.set('Cookie', c);
   const opts = { method: method || 'GET', redirect: 'manual', signal: AbortSignal.timeout(15000), headers: h };
   if (body) opts.body = body;
   const resp = await fetch(url, opts);
@@ -254,12 +254,13 @@ export default {
     _blockAds = url.searchParams.get('block_ads') === '1';
     _stripImages = url.searchParams.get('strip_images') === '1';
     _readable = url.searchParams.get('readable') === '1';
-    const r = await proxy(target, url.origin, request).catch(e => errPage('Proxy error: ' + e.message, 502));
+    const useMobile = url.searchParams.get('mode') === 'force_mobile';
+    const r = await proxy(target, url.origin, request, useMobile).catch(e => errPage('Proxy error: ' + e.message, 502));
     return r || errPage('All fetch methods failed', 502);
   },
 };
 
-async function proxy(targetUrl, workerOrigin, originalRequest) {
+async function proxy(targetUrl, workerOrigin, originalRequest, useMobile) {
   const proxyPrefix = workerOrigin + '/?__pot=';
   let resp;
   let fromCroxy = false;
@@ -274,8 +275,8 @@ async function proxy(targetUrl, workerOrigin, originalRequest) {
     }
   }
 
-  try { resp = await directFetch(targetUrl, null, method, body, extraHeaders); } catch {}
-  if (!resp || !resp.ok) { try { resp = await directFetch(targetUrl, pickUA(), method, body, extraHeaders); } catch {} }
+  try { resp = await directFetch(targetUrl, useMobile, method, body, extraHeaders); } catch {}
+  if (!resp || !resp.ok) { try { resp = await directFetch(targetUrl, useMobile, method, body, extraHeaders); } catch {} }
 
   if (resp && resp.status >= 300 && resp.status < 400) {
     return handleRedirect(resp, targetUrl, proxyPrefix);
@@ -413,27 +414,34 @@ function rewrite(html, baseUrl, prefix, origin) {
   for (let i = 0; i < parts.length; i++) {
     if (/^<script[\s>]/i.test(parts[i])) continue;
     let b = parts[i];
-    b = b.replace(/(href|src|action|data-href|data-src|data-url|poster|srcset|formaction|longdesc|background|data-srcset|manifest)\s*=\s*"([^"]*)"/gi, (m, attr, url) => {
+    // also skip <style> blocks to avoid mangling css
+    const styleParts = b.split(/(<style[\s>][\s\S]*?<\/style>)/gi);
+    for (let j = 0; j < styleParts.length; j++) {
+      if (/^<style[\s>]/i.test(styleParts[j])) continue;
+      let s = styleParts[j];
+    s = s.replace(/(href|src|action|data-href|data-src|data-url|poster|srcset|formaction|longdesc|background|data-srcset|manifest)\s*=\s*"([^"]*)"/gi, (m, attr, url) => {
       url = url.trim();
       if (!url || url.startsWith('#') || url.startsWith('javascript:') || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('about:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('ws:') || url.startsWith('wss:')) return m;
       if (url.startsWith(origin + '/?') || url.startsWith('/?url=') || url.startsWith('/?__pot=')) return m;
       const r = resolve(url, base);
       return r ? attr + '="' + enc(r) + '"' : m;
     });
-    b = b.replace(/(href|src|action|data-href|data-src|data-url|poster|srcset|formaction|longdesc|background|data-srcset|manifest)\s*=\s*'([^']*)'/gi, (m, attr, url) => {
+    s = s.replace(/(href|src|action|data-href|data-src|data-url|poster|srcset|formaction|longdesc|background|data-srcset|manifest)\s*=\s*'([^']*)'/gi, (m, attr, url) => {
       url = url.trim();
       if (!url || url.startsWith('#') || url.startsWith('javascript:') || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('about:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('ws:') || url.startsWith('wss:')) return m;
       if (url.startsWith(origin + '/?') || url.startsWith('/?url=') || url.startsWith('/?__pot=')) return m;
       const r = resolve(url, base);
       return r ? attr + "='" + enc(r) + "'" : m;
     });
-    b = b.replace(/url\s*\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi, (m, url) => {
+    s = s.replace(/url\s*\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi, (m, url) => {
       url = url.trim();
       if (!url || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('#') || url.startsWith('about:')) return m;
       const r = resolve(url, base);
       return r ? "url('" + enc(r) + "')" : m;
     });
-    parts[i] = b;
+    styleParts[j] = s;
+    }
+    parts[i] = styleParts.join('');
   }
   html = parts.join('');
   html = html.replace(/<meta[^>]*http-equiv\s*=\s*["']refresh["'][^>]*>/gi, tag => tag.replace(/content\s*=\s*["']([^"']*)["']/gi, (m, c) => {
@@ -490,7 +498,7 @@ function rewrite(html, baseUrl, prefix, origin) {
     'if(m==="get"){try{var fd2=new FormData(f);var p=[];Array.from(fd2).forEach(function(x){p.push(encodeURIComponent(x[0])+"="+encodeURIComponent(x[1]))});' +
     'if(p.length>0)qs="?"+p.join("&")}catch(e){}}' +
     'var full=a.startsWith("/")?O.replace(/\\/+$/,"")+a+qs:a+qs;' +
-    '_nav(P+_e(full))}});' +
+    '_nav(P+_e(full))}},true);' +
     'try{sessionStorage.setItem("_s",O)}catch(e){}' +
     // 1 — Block ServiceWorkers
     'try{navigator.serviceWorker&&(navigator.serviceWorker.register=function(){return Promise.resolve()},navigator.serviceWorker.getRegistrations=function(){return Promise.resolve([])},navigator.serviceWorker.getRegistration=function(){return Promise.resolve(null)},navigator.serviceWorker.ready=Promise.resolve({active:{postMessage:function(){},addEventListener:function(){}}}))}catch(e){}' +
@@ -512,6 +520,10 @@ function rewrite(html, baseUrl, prefix, origin) {
     'try{window.parent&&window.parent!==window&&window.parent.postMessage&&(window.parent.postMessage=function(msg,target,transfer){try{window.postMessage(msg,\'*\',transfer)}catch(e){}})}catch(e){}' +
     // 10 — Error-safe ResizeObserver
     'try{var _OrigRO=window.ResizeObserver;if(_OrigRO){window.ResizeObserver=function(cb){return new _OrigRO(function(e,o){try{cb(e,o)}catch(ex){}})}}}catch(e){}' +
+    // 11 — Force online for connectivity checks (fixes youtube offline detection)
+    'try{Object.defineProperty(navigator,\'onLine\',{get:function(){return true},configurable:true})}catch(e){}' +
+    // 12 — Mock connection type
+    'try{Object.defineProperty(navigator,\'connection\',{get:function(){return{effectiveType:\'4g\',downlink:10,downlinkMax:10,rtt:50,type:\'wifi\',saveData:false,onchange:null}},configurable:true})}catch(e){}' +
     '})()</script>';
   html = html.replace('</head>', interceptor + '</head>');
 
