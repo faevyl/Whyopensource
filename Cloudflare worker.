@@ -1,24 +1,26 @@
 
 /**
- * Cloudflare Worker
+ * Cloudflare Worker also it needs youtube support so yeah
  * btw this is for forking and is burst v2, kinda compatable with why though.
- * relays, cookies, redirects, HTML rewriting, you should also probably remove the badge
+ * relays, cookies, redirects, HTML rewriting, you should also probably remove the badge and replace it with your own
  *id recommend changing the things below const to what you want for max html
  */
 const MAX_HTML = 5 * 1024 * 1024;
 const RELAY_TIMEOUT = 4000;
+<!-- You should also probably change these to ones that work -->
 const CORS_RELAYS = [
-  'https://corsproxy.io/?url=',
-  'https://api.allorigins.win/raw?url=',
-  'https://api.cors.lol/?url=',
+  'Placeholder',
+  'Placeholder',
+  'Placeholder',
   'https://webcache.googleusercontent.com/search?q=cache:',
-  'https://thingproxy.freeboard.io/fetch/',
+  'Placeholder',
 ];
 // CroxyProxy-style relays: path-based with __cpo=<b64_origin>
 const CROXY_RELAYS = [
   'https://108.181.34.71',
   'https://108.181.6.9',
 ];
+<!-- Basically what it sends to the browser that the worker proxys so if you are on a kindle, you could actually browse. -->
 const UAS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
@@ -26,6 +28,7 @@ const UAS = [
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
   'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36',
 ];
+<!-- checks for stuff -->
 const CHALLENGE_RE = /(?:unusual traffic|Checking your browser|cf-browser-verification|Just a moment|DDoS protection|Attention Required.*Cloudflare|One last step|we are with security|bots aren't one of them|securely verifying|checking if the site connection is secure)/i;
 const BOT_RE = /(?:sign\s*in\s*to\s*confirm|confirm\s*you.+\s*not\s*a\s*bot|unusual\s*traffic|please\s*solve\s*the\s*challenge|verify\s*you.+\s*human|we\s*are\s*with\s*security|bots\s*aren.*t\s*one\s*of\s*them|blocked.*automated|detected.*automated|unable\s*to\s*verify\s*you)/i;
 const memCookies = new Map();
@@ -38,7 +41,7 @@ function b64d(s) {
 }
 function cors() { return { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Max-Age': '86400' }; }
 function pickUA() { return UAS[Math.floor(Math.random() * UAS.length)]; }
-
+<!-- Self explantory, its cookies -->
 // ── Cookie Management ──
 function cookieDomain(urlStr) { try { return new URL(urlStr).hostname; } catch { return null; } }
 function getCookies(domain) {
@@ -341,7 +344,7 @@ async function proxy(targetUrl, workerOrigin, originalRequest) {
     if (total > MAX_HTML) break;
   }
   let html = new TextDecoder().decode(mergeU(chunks));
-
+<!-- errors n stuff -->
   // Challenge passthrough
   if (CHALLENGE_RE.test(html) && !BOT_RE.test(html.slice(0, 16384))) {
     const enc = new TextEncoder().encode(html);
@@ -405,7 +408,7 @@ function rewrite(html, baseUrl, prefix, origin) {
     return m;
   }));
   html = html.replace(/<base[^>]*>/gi, '');
-
+<!-- dont  change this stuff here, its important unless your really good at rewriting stuff. -->
   let pageOrigin;
   try { pageOrigin = new URL(baseUrl).origin; } catch { pageOrigin = baseUrl; }
   const P = prefix;
@@ -455,7 +458,7 @@ function rewrite(html, baseUrl, prefix, origin) {
   html = html.replace(/<div[^>]*class\s*=\s*["'][^"']*(?:g-recaptcha|h-captcha|cf-turnstile)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
   return html;
 }
-
+<!-- Dont delete please. also has licensing so giv credit in that form or another -->
 // ── BURST Badge ──
 function toolbar(html, origin) {
   if (!html.includes('</head>')) return html;
@@ -465,7 +468,7 @@ function toolbar(html, origin) {
   if (m) return html.slice(0, m.index + m[0].length) + guard + badge + html.slice(m.index + m[0].length);
   return html.replace('</head>', '</head>' + badge);
 }
-
+<!-- this is just a blob url link for ppl who really want privacy. -->
 function resolve(url, base) {
   if (!url || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('javascript:') || url.startsWith('about:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('ws:') || url.startsWith('wss:')) return null;
   if (/^https?:\/\//i.test(url)) return url;
@@ -480,7 +483,7 @@ function mergeU(arrs) {
   for (const a of arrs) { r.set(a, o); o += a.length; }
   return r;
 }
-
+<!-- i would add image support but this has been depracated so sorry -->
 // ── CSS Rewriting ──
 function rewriteCSS(css, baseUrl, prefix) {
   let base;
@@ -518,3 +521,4 @@ function rewriteCSS(css, baseUrl, prefix) {
   });
   return css;
 }
+<!-- hi -->
