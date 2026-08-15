@@ -1,1534 +1,450 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!--
-  note: ui for the why proxy. works with steep-mud-5890.faevyl and misty-hall-e56e.faevyl.
-
-  terms of service:
-    - you may NOT share the proxy link publicly.
-    - you may NOT sell this software or any part of it.
-    - the creator is NOT responsible or liable for how you use this.
-    - you use this entirely at your own risk. do not drag the creator into any trouble.
-
-  how to modify:
-    - dont skid, it has licenses.
-    - change colors: edit the :root and html.theme-* css blocks
-    - change search engines: edit searchengine options in the js defaults
-    - add a new setting: add key to defaults, add html in settings panel, add logic in applysettings()
-    - change layout: edit css classes like .top-bar, .nav-bar, .home-screen
-    - add a new ui preset: add a new html.ui-* class and a new entry in ui_styles array
-    - proxy worker urls are at the top of burstnav() and burstpopup() functions
--->
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title id="pageTitle">About:blank</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Why Revived Lite</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23111'/%3E%3Ctext x='32' y='46' font-family='Arial' font-size='38' font-weight='900' text-anchor='middle' fill='%23fff'%3EW%3F%3C/text%3E%3C/svg%3E">
 <style>
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  :root{--accent:#64b5f6;--accent2:#90caf9;--accent-dim:rgba(100,181,246,0.15);--bg:#060618;--surface:#0a0a28;--surface2:#0f0f3a;--surface3:#1a1a4a;--border:rgba(100,181,246,0.15);--text:#e0edff;--text-dim:#6b85b0;--text-bright:#f0f6ff;--pink:#ff2d55;--cyan:#64b5f6;--cyan2:#90caf9;--radius:14px;--radius-sm:8px;--radius-pill:999px;--shadow:0 4px 16px rgba(0,0,0,0.5);--glow:0 0 20px rgba(100,181,246,0.2);--surface-solid:#08082a;--font:-apple-system,BlinkMacSystemFont,sans-serif}
-  html.theme-sky{--accent:#64b5f6;--bg:#060618;--surface:#0a0a28;--surface2:#0f0f3a;--surface3:#1a1a4a;--border:rgba(100,181,246,0.15);--text:#e0edff;--text-dim:#6b85b0}
-  html.theme-purple{--accent:#a855f7;--bg:#0a0a18;--surface:#0d0a1a;--surface2:#1a1035;--surface3:#2a1a4a;--border:rgba(168,85,247,0.15);--text:#e8e0ff;--text-dim:#7b6b9a}
-  html.theme-matrix{--accent:#00ff00;--bg:#000a00;--surface:#001400;--surface2:#002800;--surface3:#003a00;--border:rgba(0,255,0,0.15);--text:#00ffc0;--text-dim:#008800}
-  html.theme-midnight{--accent:#4488ff;--bg:#050520;--surface:#08082a;--surface2:#10104a;--surface3:#1a1a5a;--border:rgba(68,136,255,0.15);--text:#c8d8ff;--text-dim:#5566aa}
-  html.theme-sunset{--accent:#ff6633;--bg:#0f0505;--surface:#1a0a0a;--surface2:#2a1510;--surface3:#3a2018;--border:rgba(255,102,51,0.15);--text:#ffe8d0;--text-dim:#ccaa88}
-  html,body{height:100dvh;overflow:hidden}
-  @supports not (height:100dvh){html,body{height:100%;min-height:-webkit-fill-available}}
-  body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column}
-  ::-webkit-scrollbar{width:4px;height:4px}
-  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-  ::-webkit-scrollbar-track{background:transparent}
-  .top-bar{display:flex;align-items:center;justify-content:space-between;padding:4px 10px;flex-shrink:0;height:32px;min-height:32px}
-  .top-brand{font-size:14px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;display:flex;align-items:center;gap:6px}
-  .top-status{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-dim)}
-  .status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;box-shadow:0 0 6px var(--accent)}
-  .status-dot.loading{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
-  .status-dot.error{background:var(--pink);box-shadow:0 0 6px var(--pink)}
-  .status-dot.hidden{opacity:0}
-  #statusLabel{display:none}
-  .viewer-count{display:inline-flex;align-items:center;gap:3px;font-size:9px;opacity:.7}
-  .viewer-count .vc-dot{width:4px;height:4px;border-radius:50%;background:#22c55e;display:inline-block;animation:vcPulse 2s ease-in-out infinite}
-  .viewer-count .vc-num{font-weight:700}
-  @keyframes vcPulse{0%,100%{opacity:1}50%{opacity:.3}}
-  .main-area{flex:1;position:relative;overflow:hidden}
-  .home-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;text-align:center;overflow-y:auto;animation:fadeUp .6s ease}
-  .home-screen.hidden{display:none}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-  .home-brand{margin-bottom:12px}
-  .home-byline{font-size:10px;color:var(--text-dim);margin-bottom:6px}
-  .home-logo{font-size:48px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2),var(--pink),var(--cyan),var(--cyan2));background-size:300% 300%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shimmer 6s ease-in-out infinite;line-height:1.3;padding:4px 0}
-  @keyframes shimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
-  .home-tagline{font-size:12px;color:var(--text-dim);margin:8px auto 0;max-width:360px;text-align:center;transition:opacity .4s ease}
-  .home-search-wrap{width:100%;max-width:480px;display:flex;margin-bottom:12px}
-  .home-search-wrap input{flex:1;padding:10px 14px;border-radius:20px 0 0 20px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:14px;outline:none;-webkit-appearance:none}
-  .home-search-wrap input:focus{border-color:var(--accent)}
-  .home-search-wrap button{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:0 20px 20px 0;padding:0 20px;color:#0a0a14;font-weight:700;font-size:13px;cursor:pointer;-webkit-appearance:none}
-  .search-modes{display:flex;gap:6px;justify-content:center;margin-bottom:10px}
-  .search-mode-btn{padding:5px 14px;border-radius:999px;font-size:11px;font-weight:600;cursor:pointer;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);-webkit-appearance:none}
-  .search-mode-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
-  .quick-links{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:480px}
-  .quick-links .ql-pill{padding:6px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--border);color:var(--text);cursor:pointer;font-size:12px;display:flex;align-items:center;gap:5px;-webkit-appearance:none;position:relative;overflow:hidden}
-  .quick-links .ql-pill::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--accent),var(--accent2));opacity:0;transition:opacity .3s;border-radius:inherit}
-  .quick-links .ql-pill:active::before{opacity:.12}
-  .quick-links .ql-pill:active{background:transparent;transform:scale(.96)}
-  .content-area{width:100%;height:100%}
-  .content-area iframe{width:100%;height:100%;border:none;display:none}
-  .content-area iframe.active{display:block}
-  .bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:200;display:flex;flex-direction:column;padding:0 6px calc(6px + env(safe-area-inset-bottom,0px))}
-  .bottom-bar>*{pointer-events:auto}
-  .tab-strip{display:flex;align-items:center;gap:4px;padding:4px 8px;overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);flex-shrink:0}
-  .tab-strip.hidden{display:none}
-  .tab-pill{display:flex;align-items:center;gap:3px;padding:3px 8px;font-size:11px;color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);border-radius:999px;cursor:pointer;white-space:nowrap;flex-shrink:0;max-width:120px;-webkit-appearance:none}
-  .tab-pill.active{background:var(--surface3);color:var(--text-bright);border-color:var(--accent);box-shadow:var(--glow)}
-  .tab-pill .tp-x{font-size:12px;line-height:1;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0 2px;-webkit-appearance:none}
-  .tab-add{width:24px;height:24px;border-radius:50%;background:none;border:1px dashed var(--border);color:var(--text-dim);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-appearance:none}
-  .tab-dropdown{position:relative}
-  .tab-dropdown-btn{background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0 4px;font-size:14px;-webkit-appearance:none}
-  .tab-dropdown-menu{position:absolute;bottom:100%;right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 0;min-width:100px;box-shadow:var(--shadow);display:none;z-index:50}
-  .tab-dropdown-menu.open{display:block}
-  .tab-dropdown-menu button{display:block;width:100%;background:none;border:none;color:var(--text);font-size:11px;padding:5px 12px;text-align:left;cursor:pointer;-webkit-appearance:none}
-  .tab-dropdown-menu button:active{background:var(--surface2)}
-  .bm-strip{display:flex;align-items:center;gap:4px;padding:3px 8px;overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);flex-shrink:0}
-  .bm-strip.hidden{display:none}
-  .bm-pill{display:flex;align-items:center;gap:3px;padding:2px 8px;font-size:11px;color:var(--text-dim);cursor:pointer;border-radius:999px;white-space:nowrap;flex-shrink:0;border:1px solid transparent;-webkit-appearance:none}
-  .bm-pill:active{background:var(--surface2)}
-  .cmd-bar{display:flex;align-items:center;gap:4px;padding:4px 6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);transition:border-color .3s}
-  .cmd-bar:focus-within{border-color:var(--accent);box-shadow:var(--shadow),var(--glow)}
-  .cmd-nav{display:flex;gap:2px;flex-shrink:0}
-  .cmd-btn{width:28px;height:28px;border-radius:var(--radius-sm);background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-appearance:none}
-  .cmd-btn:active{background:var(--surface2);color:var(--text)}
-  .cmd-btn:disabled{opacity:.3}
-  .cmd-search{flex:1;display:flex;min-width:0}
-  .cmd-search input{flex:1;min-width:0;background:var(--surface2);border:1px solid transparent;border-radius:999px;padding:5px 10px;color:var(--text);font-size:12px;outline:none;-webkit-appearance:none}
-  .cmd-search input:focus{background:var(--surface);border-color:var(--border)}
-  .cmd-actions{display:flex;gap:2px;flex-shrink:0}
-  .bottom-status{display:flex;align-items:center;justify-content:space-between;padding:2px 6px;font-size:9px;color:var(--text-dim)}
-  .connection-ms{font-variant-numeric:tabular-nums}
-  .video-overlay{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);align-items:center;justify-content:center}
-  .video-overlay.open{display:flex}
-  .video-overlay .vo-close{position:absolute;top:10px;right:10px;background:var(--surface);border:1px solid var(--border);color:var(--text);width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;z-index:301;display:flex;align-items:center;justify-content:center;-webkit-appearance:none}
-  .video-overlay .vo-frame-wrap{width:90%;max-width:960px;aspect-ratio:16/9;border-radius:8px;overflow:hidden}
-  .video-overlay .vo-frame-wrap iframe{width:100%;height:100%;border:none}
-  .settings-mask{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .3s}
-  .settings-mask.open{opacity:1;pointer-events:auto}
-  .settings-panel{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:100vw;z-index:501;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s}
-  .settings-panel.open{transform:translateX(0)}
-  .sp-header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
-  .sp-header h3{font-size:16px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
-  .sp-header .sp-nav{display:flex;gap:4px}
-  .sp-header .sp-nav-btn{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;padding:3px 6px;border-radius:var(--radius-sm);-webkit-appearance:none}
-  .sp-header .sp-nav-btn.active{color:var(--accent);background:var(--accent-dim)}
-  .sp-close{width:28px;height:28px;border-radius:50%;background:none;border:1px solid var(--border);color:var(--text-dim);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-appearance:none}
-  .sp-body{flex:1;overflow-y:auto;padding:12px 20px}
-  .sp-section{margin-bottom:16px}
-  .sp-section-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid var(--border);font-weight:600}
-  .sp-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;gap:10px}
-  .sp-row label{font-size:12px;font-weight:500}
-  .sp-row select,.sp-row input[type="text"],.sp-row textarea{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:var(--radius-sm);font-size:11px;outline:none;max-width:150px;-webkit-appearance:none}
-  .sp-row textarea{max-width:100%;width:100%;min-height:50px}
-  .sp-toggle{position:relative;width:36px;height:20px;flex-shrink:0}
-  .sp-toggle input{opacity:0;width:0;height:0}
-  .sp-toggle .sp-slider{position:absolute;inset:0;background:var(--border);border-radius:10px;cursor:pointer}
-  .sp-toggle .sp-slider::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;background:var(--text);border-radius:50%}
-  .sp-toggle input:checked+.sp-slider{background:var(--accent)}
-  .sp-toggle input:checked+.sp-slider::after{transform:translateX(16px)}
-  .sp-footer{padding:10px 20px;border-top:1px solid var(--border);display:flex;gap:6px;flex-shrink:0}
-  .sp-footer button{flex:1;padding:6px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;font-weight:600;-webkit-appearance:none}
-  .sp-btn-secondary{background:var(--surface2);border:1px solid var(--border);color:var(--text)}
-  .sp-btn-danger{background:transparent;border:1px solid var(--pink);color:var(--pink)}
-  .sp-btn-accent{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#0a0a14}
-  .theme-swatches{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
-  .theme-swatch{width:32px;height:32px;border-radius:50%;cursor:pointer;border:2px solid var(--border);flex-shrink:0}
-  .theme-swatch.active{border-color:var(--text)}
-  .theme-swatch .sw-check{display:none}
-  .theme-swatch.active .sw-check{display:flex;align-items:center;justify-content:center;font-size:12px}
-  .dl-item{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px}
-  .dl-item:last-child{border-bottom:none}
-  .dl-info{flex:1;min-width:0}
-  .dl-info .dl-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)}
-  .dl-info .dl-meta{font-size:10px;color:var(--text-dim)}
-  .dl-actions{display:flex;gap:4px;flex-shrink:0}
-  .dl-actions button{width:24px;height:24px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;-webkit-appearance:none}
-  .dl-empty{text-align:center;color:var(--text-dim);font-size:11px;padding:16px 0}
-  .dl-progress{width:100%;height:2px;background:var(--border);border-radius:2px;margin-top:3px}
-  .dl-progress .dp-fill{height:100%;background:var(--accent);border-radius:2px}
-  .cookie-item{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11px;border-bottom:1px solid var(--border)}
-  .cookie-item .ci-del{background:none;border:none;color:var(--pink);cursor:pointer;font-size:13px;padding:0 4px;-webkit-appearance:none}
-  .block-page{display:none;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px;color:var(--text)}
-  .block-page.open{display:flex}
-  .about-overlay{display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.5);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);align-items:center;justify-content:center}
-  .about-overlay.open{display:flex}
-  .about-card{background:rgba(10,10,40,.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:360px;width:90%;text-align:center;box-shadow:var(--shadow),0 0 40px rgba(100,181,246,.08)}
-  .about-card .ac-logo{font-size:28px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;margin-bottom:6px}
-  .about-card .ac-version{font-size:12px;color:var(--text-dim);margin-bottom:12px}
-  .about-card .ac-desc{font-size:11px;color:var(--text-dim);line-height:1.7;margin-bottom:14px}
-  .about-card .ac-close{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#0a0a14;padding:8px 24px;border-radius:var(--radius-pill);font-weight:700;font-size:13px;cursor:pointer;transition:all .2s;-webkit-appearance:none}
-  .about-card .ac-close:active{opacity:.8;transform:scale(.96)}
-  .about-card .ac-scroll{max-height:200px;overflow-y:auto;text-align:left;margin-bottom:14px;padding:8px 0}
-  .about-card .ac-scroll::-webkit-scrollbar{width:3px}
-  .about-card .ac-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-  /* intro splash */
-  .intro-overlay{display:flex;position:fixed;inset:0;z-index:999;background:var(--bg);align-items:center;justify-content:center;flex-direction:column;opacity:1;transition:opacity .8s ease;pointer-events:none}
-  .intro-overlay.hidden{opacity:0}
-  .intro-logo{font-size:72px;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2),var(--pink),var(--cyan),var(--cyan2));background-size:300% 300%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shimmer 3s ease-in-out infinite;line-height:1.3;margin-bottom:12px;padding:8px 0}
-  .intro-tagline{font-size:14px;color:var(--text-dim);font-weight:400;letter-spacing:2px;opacity:0;animation:fadeIn 1s ease forwards;animation-delay:.8s}
-  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-  .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:6px 16px;font-size:11px;color:var(--text);z-index:700;opacity:0;pointer-events:none}
-  .toast.show{opacity:1}
-  .bg-preview{width:100%;height:50px;border-radius:var(--radius-sm);background-size:cover;background-position:center;margin-top:6px;border:1px solid var(--border);display:none}
-  .bg-preview.show{display:block}
-  .bg-remove-btn{display:none;padding:3px 8px;border-radius:var(--radius-sm);background:var(--pink);border:none;color:#fff;font-size:9px;cursor:pointer;margin-top:3px;-webkit-appearance:none}
-  .bg-remove-btn.show{display:inline-block}
-  html.ui-sharp{--radius:4px;--radius-sm:2px;--radius-pill:4px}
-  html.ui-minimal .tab-strip,html.ui-minimal .bm-strip,html.ui-minimal .cmd-bar{background:transparent;border:none}
-  html.ui-minimal .tab-pill{background:transparent;border:none;color:var(--text-dim)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  :root{
+    --bg:#f5f5f7;--surface:#fff;--surface2:#ececef;--text:#111;--text-dim:#666;
+    --border:#d9d9de;--accent:#111;--accent-text:#fff;--radius:8px;
+  }
+  html[data-theme="mono"]{
+    --bg:#f5f5f7;--surface:#fff;--surface2:#ececef;--text:#111;--text-dim:#666;
+    --border:#d9d9de;--accent:#111;--accent-text:#fff;
+  }
+  html[data-theme="dark"]{
+    --bg:#0d0d0f;--surface:#17171a;--surface2:#202024;--text:#eee;--text-dim:#999;
+    --border:#2c2c31;--accent:#fff;--accent-text:#111;
+  }
+  html[data-theme="sky"]{
+    --bg:#e8f2fb;--surface:#fff;--surface2:#dcebf8;--text:#123;--text-dim:#5a7a95;
+    --border:#c3d9ea;--accent:#1a7fd4;--accent-text:#fff;
+  }
+  html[data-theme="purple"]{
+    --bg:#f0eafa;--surface:#fff;--surface2:#e6ddf5;--text:#221533;--text-dim:#7a6a92;
+    --border:#d5c8ea;--accent:#7c3aed;--accent-text:#fff;
+  }
+  html[data-theme="green"]{
+    --bg:#eaf7ef;--surface:#fff;--surface2:#dbf0e2;--text:#0e2b16;--text-dim:#5f8a6a;
+    --border:#c3e2cd;--accent:#16a34a;--accent-text:#fff;
+  }
+  html,body{height:100%;overflow:hidden}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
+
+  /* ── top bar ── */
+  .topbar{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+  .topbar .brand{font-weight:800;font-size:13px;letter-spacing:.2px;margin-right:4px;white-space:nowrap}
+  .topbar .brand b{font-weight:900}
+  .navbtn{min-width:32px;height:32px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:var(--radius);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-appearance:none;transition:background .15s,opacity .15s}
+  .navbtn:hover{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+  .navbtn:disabled{opacity:.35;cursor:default;background:var(--surface2);color:var(--text)}
+  .urlwrap{flex:1;display:flex;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .urlwrap:focus-within{border-color:var(--accent)}
+  .urlwrap input{flex:1;min-width:0;padding:8px 10px;background:transparent;border:none;outline:none;color:var(--text);font-size:13px;-webkit-appearance:none}
+  .gobtn{height:32px;padding:0 14px;border:none;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:13px;cursor:pointer;-webkit-appearance:none;border-radius:0}
+  .gobtn:hover{opacity:.9}
+
+  /* ── tab bar ── */
+  .tabbar{display:flex;align-items:center;gap:4px;padding:5px 8px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+  .tabbar::-webkit-scrollbar{display:none}
+  .tab{display:flex;align-items:center;gap:6px;max-width:160px;min-width:70px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;flex-shrink:0;-webkit-appearance:none;transition:background .15s}
+  .tab.active{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+  .tab .tt{flex:1;overflow:hidden;text-overflow:ellipsis;min-width:0;text-align:left}
+  .tab .tx{font-size:13px;line-height:1;padding:0 2px;border-radius:50%;cursor:pointer;flex-shrink:0;-webkit-appearance:none;background:none;border:none;color:inherit}
+  .tab .tx:hover{opacity:.7}
+  .newtab{width:28px;height:28px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:var(--radius);font-size:15px;cursor:pointer;flex-shrink:0;-webkit-appearance:none;display:flex;align-items:center;justify-content:center}
+  .newtab:hover{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+
+  /* ── main ── */
+  .main{flex:1;position:relative;display:flex;flex-direction:column}
+  iframe#frame{flex:1;width:100%;border:0;background:#fff}
+
+  /* ── home ── */
+  .home{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px;position:absolute;inset:0;background:var(--bg);z-index:1;transition:opacity .25s,visibility .25s}
+  .home.hidden{opacity:0;visibility:hidden;pointer-events:none}
+  .logo{font-size:34px;font-weight:900;letter-spacing:.5px}
+  .tagline{font-size:12px;color:var(--text-dim);margin-top:-12px}
+  .hsearch{width:100%;max-width:440px;display:flex;background:var(--surface);border:1px solid var(--border);border-radius:999px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  .hsearch input{flex:1;min-width:0;padding:11px 16px;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;-webkit-appearance:none}
+  .hsearch button{border:none;background:var(--accent);color:var(--accent-text);font-weight:700;padding:0 20px;cursor:pointer;font-size:13px;-webkit-appearance:none}
+  .ql{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:480px}
+  .ql a{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;background:var(--surface);border:1px solid var(--border);border-radius:999px;color:var(--text);font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s}
+  .ql a:hover{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+  .ql a .qi{font-weight:800}
+
+  /* ── settings panel ── */
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20;opacity:0;visibility:hidden;transition:opacity .2s}
+  .mask.open{opacity:1;visibility:visible}
+  .panel{position:fixed;top:0;right:0;bottom:0;width:280px;max-width:85vw;background:var(--surface);z-index:21;box-shadow:-8px 0 30px rgba(0,0,0,.15);padding:16px;overflow-y:auto;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column;gap:14px}
+  .panel.open{transform:translateX(0)}
+  .panel h2{font-size:15px;font-weight:800}
+  .panel .close{position:absolute;top:12px;right:12px;width:28px;height:28px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:50%;cursor:pointer;font-size:14px;-webkit-appearance:none}
+  .sec{display:flex;flex-direction:column;gap:10px}
+  .sec h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-dim)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
+  .row input[type=text]{flex:1;min-width:0;padding:7px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none;-webkit-appearance:none}
+  .swatches{display:flex;flex-wrap:wrap;gap:8px}
+  .sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--border);cursor:pointer;transition:transform .12s,border-color .12s;-webkit-appearance:none}
+  .sw:hover{transform:scale(1.08)}
+  .sw.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;-webkit-appearance:none;transition:background .15s}
+  .btn:hover{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+  .footer{position:fixed;bottom:0;left:0;right:0;height:26px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:var(--surface);border-top:1px solid var(--border);font-size:11px;color:var(--text-dim);z-index:5}
+  .footer .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--text-dim);margin-right:6px}
 </style>
 </head>
 <body>
 
-<!-- Top Bar -->
-<div class="top-bar">
-  <div class="top-brand"><span class="tb-icon">&#9889;</span>Why?</div>
-  <div class="top-status">
-    <span class="status-dot" id="statusDot"></span>
-    <span id="statusLabel">Ready</span>
-    <span class="viewer-count"><span class="vc-dot"></span> <span class="vc-num" id="viewerCount">0</span></span>
+<div class="topbar">
+  <span class="brand">Why<b>Lite</b></span>
+  <button class="navbtn" id="backBtn" title="Back">&#8592;</button>
+  <button class="navbtn" id="fwdBtn" title="Forward">&#8594;</button>
+  <button class="navbtn" id="reloadBtn" title="Reload">&#8635;</button>
+  <div class="urlwrap"><input id="urlInput" placeholder="Search or enter URL..." autocomplete="off" spellcheck="false"><button class="gobtn" id="goBtn">Go</button></div>
+  <button class="navbtn" id="homeBtn" title="Home">&#8962;</button>
+  <button class="navbtn" id="settingsBtn" title="Settings">&#9881;</button>
+</div>
+
+<div class="tabbar" id="tabbar">
+  <div class="tabs" id="tabs" style="display:flex;gap:4px;flex:1;overflow-x:auto;scrollbar-width:none"></div>
+  <button class="newtab" id="newTabBtn" title="New Tab">+</button>
+</div>
+
+<div class="main">
+  <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-pointer-lock allow-fullscreen" allow="fullscreen"></iframe>
+  <div class="home" id="home">
+    <div class="logo">WhyLite</div>
+    <div class="tagline">just a proxy. that's it.</div>
+    <div class="hsearch"><input id="homeSearch" placeholder="Search or enter URL..." autocomplete="off" spellcheck="false"><button id="homeGo">Go</button></div>
+    <div class="ql" id="quickLinks"></div>
   </div>
 </div>
 
-<!-- Main Area -->
-<div class="main-area" id="mainArea">
-
-  <!-- Home Screen -->
-  <div class="home-screen" id="homePage">
-    <div class="home-brand">
-      <div class="home-byline">youtube dosent work yet, but everything else does expect stuff with bot walls.</div>
-      <div class="home-logo">Why?</div>
-      <div class="home-tagline" id="taglineRotator">Browse the open web, freely.</div>
-    </div>
-    <div class="search-modes" id="searchModes">
-      <button class="search-mode-btn active" data-mode="web">Web</button>
-      <button class="search-mode-btn" data-mode="images">Images</button>
-      <button class="search-mode-btn" data-mode="videos">Videos</button>
-    </div>
-    <div class="home-search-wrap">
-      <input type="text" id="homeSearch" placeholder="Search or enter URL..." autofocus>
-      <button onclick="whyNavigate(document.getElementById('homeSearch').value)">Go</button>
-    </div>
-    <div class="quick-links" id="quickLinks">
-      <button class="ql-pill" data-url="https://www.google.com"><span class="qli">G</span>Google</button>
-      <button class="ql-pill" data-url="https://www.youtube.com"><span class="qli">&#9654;</span>YouTube</button>
-      <button class="ql-pill" data-url="https://www.wikipedia.org"><span class="qli">W</span>Wikipedia</button>
-      <button class="ql-pill" data-url="https://www.reddit.com"><span class="qli">R</span>Reddit</button>
-      <button class="ql-pill" data-url="https://www.github.com"><span class="qli">&#60;&#62;</span>GitHub</button>
-      <button class="ql-pill" data-url="https://www.duckduckgo.com"><span class="qli">D</span>DuckDuckGo</button>
-    </div>
-  </div>
-
-  <!-- content area: the iframe where proxied pages are loaded -->
-  <div class="content-area" id="contentArea">
-    <iframe id="proxyFrame" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-orientation-lock" loading="lazy"></iframe>
-  </div>
-
-  <!-- Block Page -->
-  <div class="block-page" id="blockPage">
-    <div class="bp-icon">&#128274;</div>
-    <div class="bp-title">Domain Blocked</div>
-    <div class="bp-desc" id="blockPageDesc">This domain is in your blacklist.</div>
-    <button onclick="whyGoHome()">Go Home</button>
-  </div>
+<div class="footer">
+  <span><span class="dot" id="connDot"></span><span id="statusText">ready</span></span>
+  <span>whylite</span>
 </div>
 
-<!-- video overlay: pops up when clicking a youtube link, plays the video in an embedded iframe -->
-<div class="video-overlay" id="videoOverlay">
-  <button class="vo-close" onclick="document.getElementById('videoOverlay').classList.remove('open')">&times;</button>
-  <div class="vo-frame-wrap"><iframe id="vpFrame" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>
-</div>
+<div class="mask" id="mask"></div>
+<div class="panel" id="panel">
+  <h2>Settings</h2>
+  <button class="close" id="panelClose">&times;</button>
 
-<!-- Bottom Bar -->
-<div class="bottom-bar" id="bottomBar">
-  <!-- Tab Strip -->
-  <div class="tab-strip hidden" id="tabBar">
-    <div class="tab-dropdown">
-      <button class="tab-dropdown-btn" id="tabDropdownBtn">&#8942;</button>
-      <div class="tab-dropdown-menu" id="tabDropdownMenu">
-        <button id="closeOtherTabs">Close others</button>
-        <button id="closeAllTabs">Close all</button>
-      </div>
-    </div>
-    <div id="tabContainer" style="display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none;flex:1"></div>
-    <button class="tab-add" id="newTabBtn">+</button>
+  <div class="sec">
+    <h3>Theme</h3>
+    <div class="swatches" id="swatches"></div>
   </div>
 
-  <!-- Bookmark Strip -->
-  <div class="bm-strip hidden" id="bookmarkBar"></div>
+  <div class="sec">
+    <h3>Colors</h3>
+    <div class="row"><span>Accent</span><input type="color" id="accentColor" value="#111111" style="width:44px;height:30px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer"></div>
+    <div class="row"><span>Custom accent?</span><label class="btn" style="position:relative"><input type="checkbox" id="customAccent" style="opacity:0;position:absolute;inset:0;cursor:pointer"> toggle</label></div>
+  </div>
 
-  <!-- Command Bar -->
-  <div class="cmd-bar" id="cmdBar">
-    <div class="cmd-nav">
-      <button class="cmd-btn" id="backBtn" disabled>&#9664;</button>
-      <button class="cmd-btn" id="fwdBtn" disabled>&#9654;</button>
-      <button class="cmd-btn" id="refreshBtn">&#8635;</button>
+  <div class="sec">
+    <h3>Proxy</h3>
+    <div class="row"><span>Worker</span><input type="text" id="proxyUrl" value="https://young-glitter-de54.faevyl.workers.dev/?url="></div>
+    <div class="row"><span>Fallback</span><input type="text" id="proxyUrl2" value="https://curly-block-f81c.faevyl.workers.dev/?url="></div>
+    <div class="row"><span>Search Engine</span>
+      <select id="searchEngine" style="flex:1;padding:7px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px">
+        <option value="brave">Brave</option>
+        <option value="google">Google</option>
+        <option value="duckduckgo">DuckDuckGo</option>
+        <option value="wikipedia">Wikipedia</option>
+        <option value="bing">Bing</option>
+      </select>
     </div>
-    <div class="cmd-search">
-      <input type="text" id="urlInput" placeholder="Enter URL..." autocomplete="off" spellcheck="false">
-    </div>
-    <button class="cmd-btn accent" id="goBtn">&#10148;</button>
-    <div class="cmd-actions">
-      <button class="cmd-btn" id="homeBtn" title="Home">&#8962;</button>
-      <button class="cmd-btn" id="forceDeviceBtn" title="Toggle Force PC/Mobile">&#128241;</button>
-      <button class="cmd-btn" id="readerBtn" title="Reader Mode">&#9776;</button>
-      <button class="cmd-btn" id="bookmarkBtn" title="Bookmarks">&#9733;</button>
-      <button class="cmd-btn" id="fullscreenBtn" title="Fullscreen">&#9974;</button>
-      <button class="cmd-btn" id="settingsBtn" title="Settings">&#9881;</button>
+    <div class="row"><span>Force Device</span>
+      <select id="forceDevice" style="flex:1;padding:7px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px">
+        <option value="auto">Auto</option>
+        <option value="mobile">Mobile</option>
+        <option value="pc">PC</option>
+      </select>
     </div>
   </div>
 
-  <!-- bottom status: connection latency, viewer count, version info -->
-  <div class="bottom-status" id="bottomStatus">
-    <div class="bs-left">
-      <span class="connection-dot good" id="connDot"></span>
-      <span class="connection-ms" id="connMs">&lt;1ms</span>
-      <span id="bottomStatusText">Ready</span>
-    </div>
-    <div class="bs-right">
-      <span id="bottomTabInfo"></span>
+  <div class="sec">
+    <h3>Quick Links</h3>
+    <textarea id="qlEdit" rows="5" style="flex:1;min-height:90px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px">
+      <button class="btn primary" id="qlSave" style="flex:1">Save</button>
+      <button class="btn" id="qlReset" style="flex:1">Reset</button>
     </div>
   </div>
 </div>
-
-<!-- Settings Panel -->
-<div class="settings-mask" id="settingsMask" onclick="whyCloseSettings()"></div>
-<div class="settings-panel" id="settingsPanel">
-  <div class="sp-header">
-    <h3>Settings</h3>
-    <div class="sp-nav" id="settingsNav">
-      <button class="sp-nav-btn active" data-tab="general">Gen</button>
-      <button class="sp-nav-btn" data-tab="privacy">Priv</button>
-      <button class="sp-nav-btn" data-tab="appearance">App</button>
-      <button class="sp-nav-btn" data-tab="experimental">Exp</button>
-      <button class="sp-nav-btn" data-tab="data">Data</button>
-    </div>
-    <button class="sp-close" onclick="whyCloseSettings()">&times;</button>
-  </div>
-  <div class="sp-body" id="settingsBody">
-    <!-- general: proxy urls, search engine, encode mode, force device -->
-    <div class="sp-settings-tab" id="tab-general">
-      <div class="sp-section">
-        <div class="sp-section-title">Proxy</div>
-        <div class="sp-row"><label>Proxy URL</label><input type="text" id="proxyUrl" placeholder="https://..." style="max-width:200px"></div>
-        <div class="sp-row"><label>Fallback Proxy</label><input type="text" id="proxyUrl2" placeholder="https://..." style="max-width:200px"></div>
-        <div class="sp-row"><label>Search Engine</label>
-          <select id="searchEngine"><option value="brave">Brave</option><option value="google">Google</option><option value="duckduckgo">DuckDuckGo</option><option value="startpage">Startpage</option><option value="qwant">Qwant</option><option value="wikipedia">Wikipedia</option><option value="bing">Bing</option></select>
-        </div>
-        <div class="sp-row"><label>Encode Mode</label>
-          <select id="encodeMode"><option value="base64">Base64</option><option value="plain">Plain</option><option value="double64">Double Base64</option><option value="deepEncode">Deep Encode</option></select>
-        </div>
-        <div class="sp-row" id="encodeDepthRow" style="display:none"><label>Encode Layers</label>
-          <input type="number" id="encodeDepth" min="1" max="20" value="4" style="width:60px">
-        </div>
-        <div class="sp-row"><label>Force Device</label>
-          <select id="forceDevice"><option value="auto">Auto</option><option value="mobile">Force Mobile</option><option value="pc">Force PC</option></select>
-        </div>
-      </div>
-    </div>
-    <!-- privacy: ads, images, dark reader, cache bust, incognito -->
-    <div class="sp-settings-tab hidden" id="tab-privacy">
-      <div class="sp-section">
-        <div class="sp-section-title">Privacy & Security</div>
-        <div class="sp-row"><label>Block Ads</label><label class="sp-toggle"><input type="checkbox" id="blockAds"><span class="sp-slider"></span></label></div>
-        <div class="sp-row"><label>Strip Images</label><label class="sp-toggle"><input type="checkbox" id="stripImages"><span class="sp-slider"></span></label></div>
-        <div class="sp-row"><label>Dark Reader</label><label class="sp-toggle"><input type="checkbox" id="darkReader"><span class="sp-slider"></span></label></div>
-        <div class="sp-row"><label>Cache Bust</label><label class="sp-toggle"><input type="checkbox" id="cacheBust"><span class="sp-slider"></span></label></div>
-        <div class="sp-row"><label>Incognito Mode</label><label class="sp-toggle"><input type="checkbox" id="incognito"><span class="sp-slider"></span></label></div>
-      </div>
-    </div>
-    <!-- appearance: theme, ui style, background, custom css -->
-    <div class="sp-settings-tab hidden" id="tab-appearance">
-      <div class="sp-section">
-        <div class="sp-section-title">Theme</div>
-        <div class="theme-swatches" id="themeSwatches"></div>
-      </div>
-      <div class="sp-section">
-        <div class="sp-section-title">UI Style</div>
-        <div class="ui-style-chips" id="uiStyleChips"></div>
-      </div>
-      <div class="sp-section">
-        <div class="sp-section-title">Background</div>
-        <div class="sp-row"><label>Upload Image</label><input type="file" id="bgUpload" accept="image/*" style="font-size:11px;max-width:160px"></div>
-        <div class="bg-preview" id="bgPreview"></div>
-        <button class="bg-remove-btn" id="bgRemoveBtn">Remove Background</button>
-      </div>
-      <div class="sp-section">
-        <div class="sp-section-title">Custom CSS</div>
-        <div class="sp-row" style="flex-direction:column;align-items:stretch">
-          <textarea id="customCSS" placeholder="Enter custom CSS to inject into pages..."></textarea>
-        </div>
-      </div>
-    </div>
-    <!-- experimental: anti-detection fingerprinting features -->
-    <div class="sp-settings-tab hidden" id="tab-experimental">
-      <div class="sp-section">
-        <div class="sp-section-title">Anti-Detection</div>
-        <div class="sp-row"><label>Enable Anti-Detect</label><label class="sp-toggle"><input type="checkbox" id="antiDetect"><span class="sp-slider"></span></label></div>
-        <div class="sp-row" style="flex-direction:column;align-items:flex-start"><span style="font-size:11px;color:var(--text-dim)">Spoofs browser fingerprints (WebDriver, plugins, hardware, screen, permissions) to reduce bot detection.</span></div>
-      </div>
-    </div>
-    <!-- data: blacklist, cookies, download manager -->
-    <div class="sp-settings-tab hidden" id="tab-data">
-      <div class="sp-section">
-        <div class="sp-section-title">Domain Blacklist</div>
-        <div class="sp-row" style="flex-direction:column;align-items:stretch">
-          <textarea id="blacklist" placeholder="One domain per line (e.g. example.com)"></textarea>
-        </div>
-      </div>
-      <div class="sp-section">
-        <div class="sp-section-title">Cookies</div>
-        <div id="cookieList"></div>
-        <button class="sp-btn-danger" onclick="whyClearAllCookies()" style="padding:6px 12px;border-radius:var(--radius-sm);font-size:11px;border:1px solid var(--pink);background:transparent;color:var(--pink);cursor:pointer;margin-top:4px">Clear All Cookies</button>
-      </div>
-      <div class="sp-section">
-        <div class="sp-section-title">Download Manager</div>
-        <div id="downloadList"></div>
-      </div>
-    </div>
-  </div>
-  <div class="sp-footer">
-    <button class="sp-btn-secondary" onclick="whyResetSettings()">Reset</button>
-    <button class="sp-btn-secondary" onclick="whyShowAbout()">About</button>
-  </div>
-</div>
-
-<!-- about overlay: shown when clicking the about button in settings -->
-<div class="about-overlay" id="aboutOverlay">
-  <div class="about-card">
-    <div class="ac-logo">Why?</div>
-    <div class="ac-version">Why? v1.0</div>
-    <div class="ac-desc">A privacy-focused proxy browser. Browse the open web freely with advanced features including ad blocking, reader mode, multi-tab browsing, and more.</div>
-    <button class="ac-close" onclick="document.getElementById('aboutOverlay').classList.remove('open')">Close</button>
-  </div>
-</div>
-
-<!-- terms overlay: shown on first visit -->
-<div class="about-overlay" id="termsOverlay">
-  <div class="about-card">
-    <div class="ac-logo">Terms of Service</div>
-    <div class="ac-version">By using Why? you agree to the following:</div>
-    <div class="ac-scroll">
-      <strong>1. No Sharing</strong><br>
-      You may NOT publicly share the link to this proxy.<br><br>
-      <strong>2. No Selling</strong><br>
-      You may NOT sell this software or any part of it.<br><br>
-      <strong>3. No Liability</strong><br>
-      The creator is NOT responsible or liable for how you use this software. You use it entirely at your own risk.<br><br>
-      <strong>4. No Blame</strong><br>
-      Do not drag the creator into any trouble. If you break rules or laws using this proxy, that is on you alone.
-    </div>
-    <button class="ac-close" onclick="document.getElementById('termsOverlay').classList.remove('open');try{localStorage.setItem('why_tos_accepted','1')}catch(e){}">I Understand</button>
-  </div>
-</div>
-
-<!-- intro splash: plays on every load -->
-<div class="intro-overlay" id="introOverlay">
-  <div class="intro-logo">Why?</div>
-  <div class="intro-tagline">question everything.</div>
-</div>
-
-<!-- Toast -->
-<div class="toast" id="toast"></div>
 
 <script>
 (function(){
   'use strict';
-
-  // ── Tagline Rotator ──
-  var TAGLINES = [
-    'YOU CAN SEE MY CURSED TECHNIQUE, MAHORGAAA!',
-    '"john rod!??!" \u2014 ichigo.',
-    '"hi" \u2014 ichigo.',
-    '"i cast MINT" \u2014 mint.',
-    '"You do know that, infact you didnt think to make your own?" \u2014 lettuce.',
-    '"now im hungry for pudding" \u2014 pudding.',
-    '"by black flashing you i effectively get stronger by 10\u2191\u2191\u2079" \u2014 zakuro.',
-    '"blah blab blah"',
-    '"for the sake of the planet!"',
-    '"mew mew power of earth!"',
-    '"mew mew magical transformation!"',
-    '"we are mew mew!"',
-    '"save the world, o."',
-    '"mew mew magic is real."',
-    'i, the creator of this website, am a complete and utter idiot."',
-    'im a teapot"',
-    'from wada to water bender"',
-    'this site is a joke and also is a utter disaster but its maintained for free"',
-    'evil Why"',
-    '"mew mew"',
-    '"Uuuu"',
-    '"i cast SNOWGRAVEEE"',
-    '"HHHHgreggg"',
-    '"i cast doom"',
-    '"bum"',
-    '"yes teacher im not playing games!!1!"',
-    '"made in china"',
-    '"well well well look at what we have here"',
-    '"i know i am a terrible person but you are even worse"',
-    '"jesus stop waiting so long and browse already"',
-    '"I WANT WAFFLE FRIES"',
-    '"no refunds"',
-    '"wont you shake my hand?"',
-    '"MAHORGAA HELPPP MEEEE"',
-    '"HOLY #### IT DID A 90"',
-    '"HELLOOOO?"',
-    '":3"',
-    '"wah"',
-    '"wah wah wah"',
-    '"im sad"',
-    '"i want gum"',
-    '"git gud"',
-    '"jarona"',
-    '"thats my jarona"',
-    '"ja-ust kidding"',
-    '"love is in the air? Wrong! Wrong! WRONG! Corruption forms in the mouths of the HATEFUL"',
-    '"i want you crying for me i want you i want you wah wah wah wah wah wah wah wah"',
-    '"you aint no toji"',
-    '"I CANT TAKE IT OFF"',
-    '"WHY DOES IT HAVE BINDING 3"',
-    '"pie pie piee pie pie pie piezzz yummy"',
-    '"mew"',
-    '"mew"',
-    '"my brother once had 10k in DEBT."',
-    '"kinda a skill issue"',
-    '"crippling debt"',
-    '"what no my pronouns are him/he so that whenever you call me it would be why is him"',
-    '"i forgor \u00b0\u31c0\u00b0"',
-    '"real talk: i have no idea what im doing"',
-    '"this is fine. everything is fine. i am fine."',
-    '"give me suggestions NOW."',
-    '"bruh"',
-    '"THERES 3 OF THEM?"',
-    '"holy hell"',
-    '"google uhh idk"',
-    '"give me steam games plz"',
-    '"call the exorcist"',
-    '"or else uhh im gonna becom EVILLL"',
-    '"i sexually identify as an attack helicopter"',
-    '"its over 9000!!!"',
-    '"herro herro mayes i haveth your social security numba?"',
-    '"i am once again asking for your financial support"',
-    '"they asked me to put a tagline here so here we are"',
-    '"absolute cinema"',
-    '"let him cook"',
-    '"hes cooking"',
-    '"he burnt the kitchen down"',
-    '"the voices told me to add this"',
-    '"i am not paid enough for this"',
-    '"i am not paid at all for this"',
-    '"99.9% of gamblers quit before hitting big"',
-    '"can i copy your homework? yeah just change it a bit"',
-    '"no"',
-    '"plz give me free robux"',
-    '"average why user"',
-    '"1 dev btw"',
-    '"terry from old spice has approved"',
-    '"this tagline was made in china"',
-    '"why? because why not"',
-    '"why? is the question"',
-    '"blah"',
-    '"please sell all your stonks and crypto NOWWWWW!1"',
-    '"this is not financial advice"',
-    '"past performance does not indicate future results"',
+  var STORE = 'why_lite_v1';
+  var SEARCH = {
+    brave: 'https://search.brave.com/search?q=',
+    google: 'https://www.google.com/search?q=',
+    duckduckgo: 'https://duckduckgo.com/?q=',
+    wikipedia: 'https://en.wikipedia.org/w/index.php?fulltext=1&search=',
+    bing: 'https://www.bing.com/search?q='
+  };
+  var DEFAULT_QL = [
+    ['G','Google','https://www.google.com'],
+    ['YT','YouTube','https://www.kamtape.com'],
+    ['W','Wikipedia','https://www.wikipedia.org'],
+    ['R','Reddit','https://www.reddit.com'],
+    ['GH','GitHub','https://www.github.com'],
+    ['D','DuckDuckGo','https://www.duckduckgo.com']
   ];
-  var taglineIdx = 0;
-  setInterval(function(){
-    taglineIdx = (taglineIdx + 1) % TAGLINES.length;
-    var el = document.getElementById('taglineRotator');
-    if(el){ el.style.opacity = '0'; setTimeout(function(){ el.textContent = TAGLINES[taglineIdx]; el.style.opacity = '1'; }, 300); }
-  }, 4000);
-
-  // ── Base64 helpers ──
-  function b64safe(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
-  function b64unsafe(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='='; return decodeURIComponent(escape(atob(s))); }
 
   // ── settings ──
-  // note: default settings. edit this object to change defaults or add new settings.
-  // how to add a new setting: add a key:value here, add html in the settings panel, and handle it in applysettings().
-  var STORAGE_KEY = 'why_settings_v1';
-  var defaultSettings = {
-    proxyUrl: 'https://steep-mud-5890.faevyl.workers.dev/?url=',
-    proxyUrl2: 'https://misty-hall-e56e.faevyl.workers.dev/?url=',
-    searchEngine: 'brave',
-    encodeMode: 'base64',
-    encodeDepth: 4,
-    forceDevice: 'auto',
-    blockAds: false,
-    stripImages: false,
-    readableMode: false,
-    cacheBust: false,
-    blacklist: '',
-    customCSS: '',
-    theme: 'sky',
-    uiStyle: 'glass',
-    incognito: false,
-    darkReader: false,
-    showBookmarks: true,
-    customBg: '',
-    antiDetect: false
-  };
-  var settings = loadSettings();
-  var tabs = [{ title: 'New Tab', url: '' }];
-  var activeTab = 0;
-  var history = [];
-  var historyIdx = -1;
-  var bookmarks = loadBookmarks();
-  var tabHistory = {};
-
-  // note: loads settings from localstorage. falls back to defaults if missing.
-  function loadSettings(){
-    try{
-      var s = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if(!s) return JSON.parse(JSON.stringify(defaultSettings));
-      for(var k in defaultSettings){ if(s[k]===undefined) s[k]=defaultSettings[k]; }
-      return s;
-    }catch(e){ return JSON.parse(JSON.stringify(defaultSettings)); }
+  var settings = load();
+  function load(){
+    try{ var s = JSON.parse(localStorage.getItem(STORE)); if(s && s.theme) return s; }catch(e){}
+    return { theme:'mono', accent:'#111111', customAccent:false, proxyUrl:'https://young-glitter-de54.faevyl.workers.dev/?url=', proxyUrl2:'https://curly-block-f81c.faevyl.workers.dev/?url=', engine:'brave', device:'auto', ql:null };
   }
-  // note: saves current settings to localstorage.
-  function saveSettings(){
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); }catch(e){}
-  }
+  function save(){ try{ localStorage.setItem(STORE, JSON.stringify(settings)); }catch(e){} }
 
-  function loadBookmarks(){
-    try{ return JSON.parse(localStorage.getItem('why_bookmarks_v1')) || []; }catch(e){ return []; }
-  }
-  function saveBookmarks(){
-    try{ localStorage.setItem('why_bookmarks_v1', JSON.stringify(bookmarks)); }catch(e){}
-  }
+  var ql = settings.ql || DEFAULT_QL.map(function(x){ return { icon:x[0], name:x[1], url:x[2] }; });
 
-  // ── search engines ──
-  // note: edit these urls to add/change search engines. one entry per engine per mode.
-  // how to add a new engine: add an entry to search, search_image, and search_video, then add it to the settings html dropdown.
-  var SEARCH = {
-    startpage: 'https://www.startpage.com/do/dsearch?query=',
-    qwant: 'https://www.qwant.com/?q=',
-    google: 'https://www.google.com/search?igu=1&q=',
-    duckduckgo: 'https://duckduckgo.com/?q=',
-    bing: 'https://www.bing.com/search?q=',
-    brave: 'https://search.brave.com/search?q=',
-    wikipedia: 'https://en.wikipedia.org/w/index.php?fulltext=1&search='
-  };
-  var SEARCH_IMAGE = {
-    google: 'https://www.google.com/search?tbm=isch&q=',
-    duckduckgo: 'https://duckduckgo.com/?iax=images&ia=images&q=',
-    brave: 'https://search.brave.com/images?q='
-  };
-  var SEARCH_VIDEO = {
-    google: 'https://www.google.com/search?tbm=vid&q=',
-    duckduckgo: 'https://duckduckgo.com/?iax=videos&ia=videos&q=',
-    brave: 'https://search.brave.com/videos?q='
-  };
-  var searchMode = 'web';
-
-  // ── Connection quality ──
-  function pingWorker(){
-    var start = Date.now();
-    var w = settings.proxyUrl || defaultSettings.proxyUrl;
-    fetch(w.replace(/\?url=.*$/,'').replace(/\/+$/,'') + '/__why/info', { method:'GET', mode:'cors', cache:'no-store' })
-      .then(function(r){ return r.json(); })
-      .then(function(){
-        var ms = Date.now() - start;
-        var dot = document.getElementById('connDot');
-        var msEl = document.getElementById('connMs');
-        if(msEl) msEl.textContent = ms + 'ms';
-        if(dot){
-          if(ms < 300) dot.className = 'connection-dot good';
-          else if(ms < 800) dot.className = 'connection-dot fair';
-          else dot.className = 'connection-dot poor';
-        }
-      })
-      .catch(function(){
-        var dot = document.getElementById('connDot');
-        if(dot) dot.className = 'connection-dot poor';
-        var msEl = document.getElementById('connMs');
-        if(msEl) msEl.textContent = 'N/A';
-      });
-  }
-  setInterval(pingWorker, 30000);
-  setTimeout(pingWorker, 1000);
-
-  // ── Viewer Counter ──
-  function pingViewer(){
-    var w = settings.proxyUrl || defaultSettings.proxyUrl;
-    fetch(w.replace(/\?url=.*$/,'').replace(/\/+$/,'') + '/__vcount', { method:'GET', mode:'cors', cache:'no-store' })
-      .then(function(r){ return r.json(); })
-      .then(function(d){ if(d.count!==undefined){ document.getElementById('viewerCount').textContent = d.count; } })
-      .catch(function(){});
-  }
-  setInterval(pingViewer, 20000);
-  setTimeout(pingViewer, 2000);
-
-  // ── Search mode pills ──
-  document.addEventListener('click', function(e){
-    var btn = e.target.closest('.search-mode-btn');
-    if(!btn) return;
-    document.querySelectorAll('.search-mode-btn').forEach(function(b){ b.classList.remove('active'); });
-    btn.classList.add('active');
-    searchMode = btn.dataset.mode;
-    try{ localStorage.setItem('why_search_mode', searchMode); }catch(e){}
-  });
-  try{ var savedMode = localStorage.getItem('why_search_mode'); if(savedMode) searchMode = savedMode; }catch(e){}
-
-  // ── Quick links ──
-  document.addEventListener('click', function(e){
-    var pill = e.target.closest('.ql-pill');
-    if(!pill) return;
-    whyNavigate(pill.dataset.url);
-  });
-
-  // ── Navigation ──
-  window.whyNavigate = function(value){
-    if(!value) return;
-    value = value.trim();
-    if(!value) return;
-    var isUrl = /^https?:\/\//i.test(value) || (/^[^\s]+\.[a-z]{2,}/i.test(value) && !value.includes(' '));
-    if(isUrl){
-      if(!/^https?:\/\//i.test(value)) value = 'https://' + value;
-      loadProxy(value);
+  function applyTheme(){
+    document.documentElement.setAttribute('data-theme', settings.theme);
+    if(settings.customAccent){
+      document.documentElement.style.setProperty('--accent', settings.accent);
+      document.documentElement.style.setProperty('--accent-text', pickText(settings.accent));
     } else {
-      var searchUrl = SEARCH[settings.searchEngine] || SEARCH.brave;
-      if(searchMode === 'images'){
-        var imgEng = SEARCH_IMAGE[settings.searchEngine] || SEARCH_IMAGE.brave || searchUrl;
-        loadProxy(imgEng + encodeURIComponent(value));
-      } else if(searchMode === 'videos'){
-        var vidEng = SEARCH_VIDEO[settings.searchEngine] || SEARCH_VIDEO.brave || searchUrl;
-        loadProxy(vidEng + encodeURIComponent(value));
-      } else {
-        loadProxy(searchUrl + encodeURIComponent(value));
-      }
-    }
-  };
-
-  // ── Build Proxy URL ──
-  function buildToProxy(enc){
-    var w = settings.proxyUrl || defaultSettings.proxyUrl;
-    var b = w.replace(/\/+$/, '');
-    if(b.includes('?url=')) b = b.replace(/\?url=.*$/, '') + '?__pot=' + enc;
-    else if(b.includes('__pot=')) b = b.replace(/__pot=[^&]*/, '__pot=' + enc);
-    else b += (b.includes('?') ? '&' : '?') + '__pot=' + enc;
-    if(settings.darkReader) b += '&dark=1';
-    if(settings.forceDevice === 'mobile') b += '&mode=force_mobile';
-    else if(settings.forceDevice === 'pc') b += '&mode=force_pc';
-    if(settings.blockAds) b += '&block_ads=1';
-    if(settings.stripImages) b += '&strip_images=1';
-    if(settings.readableMode) b += '&readable=1';
-    if(settings.cacheBust) b += '&_cb=' + Date.now();
-    if(settings.customCSS) b += '&css=' + encodeURIComponent(b64safe(settings.customCSS));
-    if(settings.antiDetect) b += '&anti_detect=1';
-    return b;
-  }
-  function buildProxyUrl(rawUrl){
-    try{
-      var mode = settings.encodeMode || 'base64';
-      if(mode === 'deepEncode'){
-        var enc2 = rawUrl;
-        var depth = parseInt(settings.encodeDepth, 10) || 4;
-        if(depth < 1) depth = 1;
-        if(depth > 20) depth = 20;
-        for(var i=0;i<depth;i++) enc2 = encodeURIComponent(enc2);
-        return buildToProxy(b64safe(enc2)) + '&encode_depth=' + depth;
-      }
-      var enc;
-      if(mode === 'plain') enc = encodeURIComponent(rawUrl);
-      else if(mode === 'double64') enc = encodeURIComponent(b64safe(b64safe(rawUrl)));
-      else enc = encodeURIComponent(b64safe(rawUrl));
-      return buildToProxy(enc);
-    }catch(e){ return rawUrl; }
-  }
-
-  // ── Load proxy URL ──
-  var historyStack = [];
-  var historyPosition = -1;
-
-  // note: main proxy navigation function. builds the proxy url and loads it in an iframe.
-  // how to change worker urls: edit the proxyurl and proxyurl2 variables below.
-  function loadProxy(url){
-    // Check blacklist
-    var bl = (settings.blacklist || '').split('\n').map(function(s){ return s.trim().toLowerCase(); }).filter(Boolean);
-    var domain = '';
-    try{ domain = new URL(url).hostname.toLowerCase(); }catch(e){ domain = url.toLowerCase(); }
-    for(var i=0; i<bl.length; i++){
-      if(domain === bl[i] || domain.endsWith('.' + bl[i])){
-        showBlockPage(bl[i]);
-        return;
-      }
-    }
-
-    var pu = buildProxyUrl(url);
-    var frame = document.getElementById('proxyFrame');
-    var home = document.getElementById('homePage');
-    var bp = document.getElementById('blockPage');
-    var input = document.getElementById('urlInput');
-    if(bp) bp.classList.remove('open');
-    if(home) home.classList.add('hidden');
-    if(frame){
-      frame.classList.add('active');
-      frame.src = pu;
-    }
-    if(input) input.value = url;
-
-    // History
-    if(historyPosition < historyStack.length - 1) historyStack = historyStack.slice(0, historyPosition + 1);
-    historyStack.push(url);
-    historyPosition = historyStack.length - 1;
-    updateNavButtons();
-
-    tabs[activeTab].url = url;
-    tabs[activeTab].title = url;
-    updateTabs();
-
-    setStatus('loading');
-    saveTabs();
-  }
-
-  function showBlockPage(domain){
-    var home = document.getElementById('homePage');
-    var frame = document.getElementById('proxyFrame');
-    var bp = document.getElementById('blockPage');
-    var desc = document.getElementById('blockPageDesc');
-    if(home) home.classList.add('hidden');
-    if(frame) frame.classList.remove('active');
-    if(bp){ bp.classList.add('open'); if(desc) desc.textContent = 'The domain "' + domain + '" is in your blacklist.'; }
-    setStatus('idle');
-  }
-
-  window.whyGoHome = function(){
-    var home = document.getElementById('homePage');
-    var frame = document.getElementById('proxyFrame');
-    var bp = document.getElementById('blockPage');
-    if(home) home.classList.remove('hidden');
-    if(frame) frame.classList.remove('active');
-    if(bp) bp.classList.remove('open');
-    var input = document.getElementById('urlInput');
-    if(input) input.value = '';
-    setStatus('idle');
-  };
-
-  function goBack(){
-    if(historyPosition > 0){
-      historyPosition--;
-      loadProxySilent(historyStack[historyPosition]);
-      updateNavButtons();
+      document.documentElement.style.removeProperty('--accent');
+      document.documentElement.style.removeProperty('--accent-text');
     }
   }
-  function goForward(){
-    if(historyPosition < historyStack.length - 1){
-      historyPosition++;
-      loadProxySilent(historyStack[historyPosition]);
-      updateNavButtons();
-    }
-  }
-  function loadProxySilent(url){
-    var pu = buildProxyUrl(url);
-    var frame = document.getElementById('proxyFrame');
-    var input = document.getElementById('urlInput');
-    if(frame){ frame.classList.add('active'); frame.src = pu; }
-    if(input) input.value = url;
-    tabs[activeTab].url = url;
-    tabs[activeTab].title = url;
-    updateTabs();
-    setStatus('loading');
+  function pickText(hex){
+    var n = parseInt(hex.slice(1),16);
+    var r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+    return (r*0.299+g*0.587+b*0.114) > 150 ? '#111' : '#fff';
   }
 
-  function updateNavButtons(){
-    document.getElementById('backBtn').disabled = historyPosition <= 0;
-    document.getElementById('fwdBtn').disabled = historyPosition >= historyStack.length - 1;
+  // ── theming ui ──
+  var THEMES = [
+    ['mono','Monochrome','#f5f5f7'],
+    ['dark','Dark','#0d0d0f'],
+    ['sky','Sky','#e8f2fb'],
+    ['purple','Purple','#f0eafa'],
+    ['green','Green','#eaf7ef']
+  ];
+  var swWrap = document.getElementById('swatches');
+  THEMES.forEach(function(t){
+    var b = document.createElement('button');
+    b.className = 'sw' + (settings.theme===t[0]?' active':'');
+    b.title = t[1];
+    b.style.background = t[2];
+    b.onclick = function(){
+      settings.theme = t[0]; save(); applyTheme();
+      document.querySelectorAll('.sw').forEach(function(x){ x.classList.remove('active'); });
+      b.classList.add('active');
+    };
+    swWrap.appendChild(b);
+  });
+
+  var accentInput = document.getElementById('accentColor');
+  var customAccent = document.getElementById('customAccent');
+  accentInput.value = settings.accent;
+  customAccent.checked = settings.customAccent;
+  accentInput.addEventListener('input', function(){ settings.accent = this.value; if(settings.customAccent){ save(); applyTheme(); } });
+  customAccent.addEventListener('change', function(){ settings.customAccent = this.checked; save(); applyTheme(); });
+
+  // ── proxy ──
+  var proxyUrl = document.getElementById('proxyUrl');
+  var proxyUrl2 = document.getElementById('proxyUrl2');
+  var engineSel = document.getElementById('searchEngine');
+  var deviceSel = document.getElementById('forceDevice');
+  proxyUrl.value = settings.proxyUrl;
+  proxyUrl2.value = settings.proxyUrl2;
+  engineSel.value = settings.engine;
+  deviceSel.value = settings.device;
+  function saveProxy(){
+    settings.proxyUrl = proxyUrl.value || 'https://young-glitter-de54.faevyl.workers.dev/?url=';
+    settings.proxyUrl2 = proxyUrl2.value || 'https://curly-block-f81c.faevyl.workers.dev/?url=';
+    settings.engine = engineSel.value;
+    settings.device = deviceSel.value;
+    save();
+  }
+  proxyUrl.addEventListener('change', saveProxy);
+  proxyUrl2.addEventListener('change', saveProxy);
+  engineSel.addEventListener('change', saveProxy);
+  deviceSel.addEventListener('change', saveProxy);
+
+  function activeWorker(){
+    return settings.proxyUrl || 'https://young-glitter-de54.faevyl.workers.dev/?url=';
+  }
+  function workerBase(){
+    return activeWorker().replace(/\?url=.*$/,'').replace(/\/+$/,'');
+  }
+  function b64e(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+  function buildProxy(raw){
+    var w = workerBase();
+    var tok = b64e(raw);
+    var u = w + '/?__pot=' + encodeURIComponent(tok);
+    if(settings.device === 'mobile') u += '&mode=force_mobile';
+    else if(settings.device === 'pc') u += '&mode=force_pc';
+    return u;
   }
 
-  function setStatus(s){
-    var dot = document.getElementById('statusDot');
-    var label = document.getElementById('statusLabel');
-    var bst = document.getElementById('bottomStatusText');
-    if(!dot) return;
-    dot.className = 'status-dot';
-    if(s === 'loading'){ dot.classList.add('loading'); if(label) label.textContent = 'Loading'; if(bst) bst.textContent = 'Loading...'; }
-    else if(s === 'error'){ dot.classList.add('error'); if(label) label.textContent = 'Error'; if(bst) bst.textContent = 'Connection error'; }
-    else { if(label) label.textContent = 'Connected'; if(bst) bst.textContent = 'Ready'; }
-  }
-
-  // ── Tab Management ──
-  function updateTabs(){
-    var container = document.getElementById('tabContainer');
-    if(!container) return;
-    container.innerHTML = '';
-    tabs.forEach(function(tab, i){
-      var pill = document.createElement('button');
-      pill.className = 'tab-pill' + (i === activeTab ? ' active' : '');
-      var titleSpan = document.createElement('span');
-      titleSpan.className = 'tp-title';
-      titleSpan.textContent = tab.title || 'New Tab';
-      pill.appendChild(titleSpan);
-      var closeBtn = document.createElement('span');
-      closeBtn.className = 'tp-x';
-      closeBtn.textContent = '\u00D7';
-      closeBtn.onclick = function(e){ e.stopPropagation(); closeTab(i); };
-      pill.appendChild(closeBtn);
-      pill.onclick = function(){ switchTab(i); };
-      container.appendChild(pill);
-    });
-    var tb = document.getElementById('tabBar');
-    if(tabs.length > 1) tb.classList.remove('hidden');
-    else tb.classList.add('hidden');
-  }
+  // ── navigation + tabs ──
+  var frame = document.getElementById('frame');
+  var home = document.getElementById('home');
+  var urlInput = document.getElementById('urlInput');
+  var statusText = document.getElementById('statusText');
+  var connDot = document.getElementById('connDot');
+  var tabs = [{ title:'New Tab', url:'', savedSrc:'about:blank' }];
+  var activeTab = 0;
+  var historyStack = [], historyPos = -1;
 
   function switchTab(i){
     if(i === activeTab) return;
-    // Save current tab state
-    var frame = document.getElementById('proxyFrame');
-    if(frame && frame.src && frame.src !== 'about:blank'){
-      tabs[activeTab].savedSrc = frame.src;
-    }
+    if(frame.src && frame.src !== 'about:blank') tabs[activeTab].savedSrc = frame.src;
     activeTab = i;
-    updateTabs();
-    restoreTab(i);
-    updateNavButtons();
-  }
-
-  function restoreTab(i){
-    var tab = tabs[i];
-    var home = document.getElementById('homePage');
-    var frame = document.getElementById('proxyFrame');
-    var bp = document.getElementById('blockPage');
-    var input = document.getElementById('urlInput');
-    if(bp) bp.classList.remove('open');
-    if(tab.url){
-      if(home) home.classList.add('hidden');
-      if(frame){
-        frame.classList.add('active');
-        frame.src = tab.savedSrc || buildProxyUrl(tab.url);
-      }
-      if(input) input.value = tab.url;
-      // Restore history position
-      var idx = historyStack.indexOf(tab.url);
-      if(idx >= 0) historyPosition = idx;
-      setStatus('idle');
+    renderTabs();
+    var t = tabs[i];
+    if(t.url){
+      home.classList.add('hidden');
+      urlInput.value = t.url;
+      frame.src = t.savedSrc || buildProxy(t.url);
+      setStatus('ready');
     } else {
-      if(home) home.classList.remove('hidden');
-      if(frame) frame.classList.remove('active');
-      if(input) input.value = '';
-      setStatus('idle');
+      home.classList.remove('hidden');
+      urlInput.value = '';
+      frame.src = 'about:blank';
     }
   }
-
   function newTab(){
-    tabs.push({ title: 'New Tab', url: '', savedSrc: '' });
-    activeTab = tabs.length - 1;
-    updateTabs();
-    restoreTab(activeTab);
-    saveTabs();
+    tabs.push({ title:'New Tab', url:'', savedSrc:'about:blank' });
+    switchTab(tabs.length-1);
   }
-
   function closeTab(i){
     if(tabs.length <= 1) return;
     tabs.splice(i, 1);
-    if(activeTab >= tabs.length) activeTab = tabs.length - 1;
-    updateTabs();
-    restoreTab(activeTab);
-    saveTabs();
+    if(activeTab >= tabs.length) activeTab = tabs.length-1;
+    switchTab(activeTab);
   }
-
-  function closeOtherTabs(){
-    if(tabs.length <= 1) return;
-    var current = tabs[activeTab];
-    tabs = [current];
-    activeTab = 0;
-    updateTabs();
-    restoreTab(0);
-    saveTabs();
-    document.getElementById('tabDropdownMenu').classList.remove('open');
-  }
-
-  function closeAllTabs(){
-    tabs = [{ title: 'New Tab', url: '', savedSrc: '' }];
-    activeTab = 0;
-    updateTabs();
-    restoreTab(0);
-    saveTabs();
-    document.getElementById('tabDropdownMenu').classList.remove('open');
-  }
-
-  // ── Tab Persistence (localStorage) ──
-  function saveTabs(){
-    try{
-      var data = tabs.map(function(t){ return { title: t.title, url: t.url, savedSrc: t.savedSrc }; });
-      localStorage.setItem('why_tabs_v1', JSON.stringify(data));
-      localStorage.setItem('why_active_tab_v1', activeTab);
-      localStorage.setItem('why_history_v1', JSON.stringify(historyStack));
-      localStorage.setItem('why_history_pos_v1', historyPosition);
-    }catch(e){}
-  }
-  // note: loads tabs from indexeddb on startup.
-  // how tab persistence works: tab urls are stored in indexeddb and restored on page load.
-  function loadTabs(){
-    try{
-      var data = JSON.parse(localStorage.getItem('why_tabs_v1'));
-      if(data && data.length > 0){ tabs = data; activeTab = parseInt(localStorage.getItem('why_active_tab_v1')) || 0; }
-      var h = JSON.parse(localStorage.getItem('why_history_v1'));
-      if(h){ historyStack = h; historyPosition = parseInt(localStorage.getItem('why_history_pos_v1')) || -1; }
-    }catch(e){}
-  }
-  loadTabs();
-
-  // ── download manager (indexeddb) ──
-  // note: downloads are stored as blobs in indexeddb. never actually saved to disk.
-  // how to clear downloads: use the clear button in the downloads ui.
-  var DB_NAME = 'WhyDownloads';
-  var DB_VER = 1;
-  var db = null;
-  function openDB(cb){
-    if(db) return cb(db);
-    var req = indexedDB.open(DB_NAME, DB_VER);
-    req.onupgradeneeded = function(e){
-      var d = e.target.result;
-      if(!d.objectStoreNames.contains('downloads')){
-        d.createObjectStore('downloads', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-    req.onsuccess = function(e){
-      db = e.target.result;
-      cb(db);
-    };
-    req.onerror = function(){ cb(null); };
-  }
-
-  function addDownload(name, size, blob){
-    openDB(function(d){
-      if(!d) return;
-      var tx = d.transaction('downloads', 'readwrite');
-      var store = tx.objectStore('downloads');
-      store.add({ name: name, size: size, date: new Date().toISOString(), blob: blob });
+  function renderTabs(){
+    var c = document.getElementById('tabs');
+    c.innerHTML = '';
+    tabs.forEach(function(t, i){
+      var el = document.createElement('button');
+      el.className = 'tab' + (i===activeTab?' active':'');
+      var tt = document.createElement('span');
+      tt.className = 'tt';
+      tt.textContent = t.title || 'New Tab';
+      el.appendChild(tt);
+      var x = document.createElement('span');
+      x.className = 'tx';
+      x.textContent = '\u00D7';
+      x.onclick = function(e){ e.stopPropagation(); closeTab(i); };
+      el.appendChild(x);
+      el.onclick = function(){ switchTab(i); };
+      c.appendChild(el);
     });
   }
 
-  function getDownloads(cb){
-    openDB(function(d){
-      if(!d) return cb([]);
-      var tx = d.transaction('downloads', 'readonly');
-      var store = tx.objectStore('downloads');
-      var req = store.getAll();
-      req.onsuccess = function(){ cb(req.result || []); };
-      req.onerror = function(){ cb([]); };
-    });
-  }
-
-  function deleteDownload(id){
-    openDB(function(d){
-      if(!d) return;
-      var tx = d.transaction('downloads', 'readwrite');
-      tx.objectStore('downloads').delete(id);
-    });
-    renderDownloads();
-  }
-
-  function renderDownloads(){
-    getDownloads(function(dl){
-      var el = document.getElementById('downloadList');
-      if(!el) return;
-      if(!dl || dl.length === 0){
-        el.innerHTML = '<div class="dl-empty">No downloads yet</div>';
-        return;
-      }
-      var html = '';
-      dl.forEach(function(item){
-        var sizeStr = item.size > 1048576 ? (item.size/1048576).toFixed(1)+'MB' : item.size > 1024 ? (item.size/1024).toFixed(1)+'KB' : item.size+'B';
-        html += '<div class="dl-item">' +
-          '<div class="dl-icon">&#128206;</div>' +
-          '<div class="dl-info"><div class="dl-name">' + escapeHtml(item.name) + '</div><div class="dl-meta"><span>' + sizeStr + '</span><span>' + (item.date || '') + '</span></div></div>' +
-          '<div class="dl-actions">' +
-          '<button onclick="whyOpenDownload(' + item.id + ')" title="Open">&#128065;</button>' +
-          '<button onclick="whyDeleteDownload(' + item.id + ')" title="Delete">&#128465;</button>' +
-          '</div></div>';
-      });
-      el.innerHTML = html;
-    });
-  }
-
-  window.whyOpenDownload = function(id){
-    openDB(function(d){
-      if(!d) return;
-      var tx = d.transaction('downloads', 'readonly');
-      var req = tx.objectStore('downloads').get(id);
-      req.onsuccess = function(){
-        var item = req.result;
-        if(item && item.blob){
-          var url = URL.createObjectURL(item.blob);
-          window.open(url);
-        }
-      };
-    });
-  };
-
-  window.whyDeleteDownload = function(id){
-    deleteDownload(id);
-  };
-
-  // ── Cookie Viewer ──
-  function renderCookies(){
-    var el = document.getElementById('cookieList');
-    if(!el) return;
-    // Use document.cookie
-    var cookies = document.cookie.split(';').filter(Boolean);
-    if(cookies.length === 0){
-      el.innerHTML = '<div class="dl-empty">No cookies</div>';
-      return;
-    }
-    var html = '';
-    cookies.forEach(function(c){
-      var parts = c.trim().split('=');
-      var name = parts[0];
-      var value = parts.slice(1).join('=');
-      html += '<div class="cookie-item"><span class="ci-name">' + escapeHtml(name) + '</span><span class="ci-value">' + escapeHtml(value) + '</span><button class="ci-del" onclick="whyDeleteCookie(\'' + escapeHtml(name) + '\')">&times;</button></div>';
-    });
-    el.innerHTML = html;
-  }
-
-  window.whyDeleteCookie = function(name){
-    document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    renderCookies();
-    whyToast('Cookie deleted');
-  };
-
-  window.whyClearAllCookies = function(){
-    var cookies = document.cookie.split(';').filter(Boolean);
-    cookies.forEach(function(c){
-      var name = c.trim().split('=')[0];
-      document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    });
-    renderCookies();
-    whyToast('All cookies cleared');
-  };
-
-  // ── settings ui ──
-  // note: applies all settings to the ui. add your new setting handler here.
-  // how to add a setting handler: add a new if/var block after the existing ones below.
-  function applySettings(){
-    // Apply theme
-    document.documentElement.className = '';
-    if(settings.theme && settings.theme !== '') document.documentElement.classList.add('theme-' + settings.theme);
-    document.documentElement.classList.add('ui-' + settings.uiStyle);
-
-    // Custom background
-    var bgPreview = document.getElementById('bgPreview');
-    if(settings.customBg && bgPreview){
-      bgPreview.style.backgroundImage = 'url(' + settings.customBg + ')';
-      bgPreview.classList.add('show');
-      document.getElementById('bgRemoveBtn').classList.add('show');
-      document.body.style.backgroundImage = 'url(' + settings.customBg + ')';
-      document.body.style.backgroundSize = 'cover';
-      document.body.style.backgroundPosition = 'center';
-    } else {
-      document.body.style.backgroundImage = '';
-      document.body.style.backgroundSize = '';
-      document.body.style.backgroundPosition = '';
-    }
-
-    // Update force device button icon
-    updateForceDeviceBtn();
-    // Update reader mode button
-    updateReaderBtn();
-  }
-
-  function updateForceDeviceBtn(){
-    var btn = document.getElementById('forceDeviceBtn');
-    if(!btn) return;
-    if(settings.forceDevice === 'mobile'){
-      btn.textContent = '\uD83D\uDCF1';
-      btn.title = 'Force Mobile (active)';
-      btn.classList.add('active-toggle');
-    } else if(settings.forceDevice === 'pc'){
-      btn.textContent = '\uD83D\uDCBB';
-      btn.title = 'Force PC (active)';
-      btn.classList.remove('active-toggle');
-    } else {
-      btn.textContent = '\uD83D\uDCF1';
-      btn.title = 'Device: Auto';
-      btn.classList.remove('active-toggle');
-    }
-  }
-
-  function updateReaderBtn(){
-    var btn = document.getElementById('readerBtn');
-    if(!btn) return;
-    if(settings.readableMode){
-      btn.classList.add('active-toggle');
-    } else {
-      btn.classList.remove('active-toggle');
-    }
-  }
-
-  function syncSettingsToUI(){
-    document.getElementById('proxyUrl').value = settings.proxyUrl || '';
-    document.getElementById('proxyUrl2').value = settings.proxyUrl2 || '';
-    document.getElementById('searchEngine').value = settings.searchEngine || 'brave';
-    document.getElementById('encodeMode').value = settings.encodeMode || 'base64';
-    document.getElementById('encodeDepth').value = settings.encodeDepth || 4;
-    document.getElementById('encodeDepthRow').style.display = (settings.encodeMode === 'deepEncode') ? '' : 'none';
-    document.getElementById('forceDevice').value = settings.forceDevice || 'auto';
-    document.getElementById('blockAds').checked = !!settings.blockAds;
-    document.getElementById('stripImages').checked = !!settings.stripImages;
-    document.getElementById('darkReader').checked = !!settings.darkReader;
-    document.getElementById('cacheBust').checked = !!settings.cacheBust;
-    document.getElementById('incognito').checked = !!settings.incognito;
-    document.getElementById('antiDetect').checked = !!settings.antiDetect;
-    document.getElementById('blacklist').value = settings.blacklist || '';
-    document.getElementById('customCSS').value = settings.customCSS || '';
-    applySettings();
-  }
-
-  function syncUIToSettings(){
-    settings.proxyUrl = document.getElementById('proxyUrl').value;
-    settings.proxyUrl2 = document.getElementById('proxyUrl2').value;
-    settings.searchEngine = document.getElementById('searchEngine').value;
-    settings.encodeMode = document.getElementById('encodeMode').value;
-    settings.encodeDepth = parseInt(document.getElementById('encodeDepth').value, 10) || 4;
-    document.getElementById('encodeDepthRow').style.display = (settings.encodeMode === 'deepEncode') ? '' : 'none';
-    settings.forceDevice = document.getElementById('forceDevice').value;
-    settings.blockAds = document.getElementById('blockAds').checked;
-    settings.stripImages = document.getElementById('stripImages').checked;
-    settings.darkReader = document.getElementById('darkReader').checked;
-    settings.cacheBust = document.getElementById('cacheBust').checked;
-    settings.incognito = document.getElementById('incognito').checked;
-    settings.antiDetect = document.getElementById('antiDetect').checked;
-    settings.blacklist = document.getElementById('blacklist').value;
-    settings.customCSS = document.getElementById('customCSS').value;
-    saveSettings();
-    updateForceDeviceBtn();
-  }
-
-  // note: initialises all settings ui elements and event listeners.
-  // how to add a new setting ui: add the html element to settings panel, then create the element reference + event listener here.
-  function initSettingsUI(){
-    var proxyUrlEl = document.getElementById('proxyUrl');
-    var proxyUrl2El = document.getElementById('proxyUrl2');
-    var searchEngineEl = document.getElementById('searchEngine');
-    var encodeModeEl = document.getElementById('encodeMode');
-    var forceDeviceEl = document.getElementById('forceDevice');
-    var blockAdsEl = document.getElementById('blockAds');
-    var stripImagesEl = document.getElementById('stripImages');
-    var darkReaderEl = document.getElementById('darkReader');
-    var cacheBustEl = document.getElementById('cacheBust');
-    var incognitoEl = document.getElementById('incognito');
-    var antiDetectEl = document.getElementById('antiDetect');
-    var blacklistEl = document.getElementById('blacklist');
-    var customCSSEl = document.getElementById('customCSS');
-
-    var changeHandler = function(){ syncUIToSettings(); };
-    proxyUrlEl.addEventListener('change', changeHandler);
-    proxyUrl2El.addEventListener('change', changeHandler);
-    searchEngineEl.addEventListener('change', changeHandler);
-    encodeModeEl.addEventListener('change', changeHandler);
-    forceDeviceEl.addEventListener('change', changeHandler);
-    blockAdsEl.addEventListener('change', changeHandler);
-    stripImagesEl.addEventListener('change', changeHandler);
-    darkReaderEl.addEventListener('change', changeHandler);
-    cacheBustEl.addEventListener('change', changeHandler);
-    incognitoEl.addEventListener('change', changeHandler);
-    antiDetectEl.addEventListener('change', changeHandler);
-    blacklistEl.addEventListener('change', changeHandler);
-    customCSSEl.addEventListener('change', changeHandler);
-
-    // note: theme swatches are rendered here. add new themes to the themes array below.
-    // how to add a new theme: add an entry to the themes array with id, label, bg, and accent.
-    var THEMES = [
-      { id:'sky', label:'Sky', bg:'#060618', accent:'#64b5f6' },
-      { id:'purple', label:'Purple', bg:'#0a0a18', accent:'#a855f7' },
-      { id:'matrix', label:'Matrix', bg:'#000a00', accent:'#00ff00' },
-      { id:'midnight', label:'Midnight', bg:'#050520', accent:'#4488ff' },
-      { id:'sunset', label:'Sunset', bg:'#0f0505', accent:'#ff6633' }
-    ];
-    var swatchContainer = document.getElementById('themeSwatches');
-    THEMES.forEach(function(t){
-      var sw = document.createElement('div');
-      sw.className = 'theme-swatch' + (settings.theme === t.id ? ' active' : '');
-      sw.style.background = 'linear-gradient(135deg, ' + t.bg + ', ' + t.accent + ')';
-      sw.innerHTML = '<span class="sw-check">&#10003;</span>';
-      sw.dataset.theme = t.id;
-      sw.onclick = function(){
-        settings.theme = t.id;
-        saveSettings();
-        applySettings();
-        document.querySelectorAll('.theme-swatch').forEach(function(s){ s.classList.remove('active'); });
-        sw.classList.add('active');
-      };
-      swatchContainer.appendChild(sw);
-    });
-
-    // note: ui preset chips (glass, sharp, rounded, minimal). add new presets to the ui_styles array.
-    // how to add a new ui preset: add an id and label to ui_styles, then add a matching html.ui-* css class.
-    // UI Style chips
-    var UI_STYLES = [
-      { id:'glass', label:'Glass' },
-      { id:'sharp', label:'Sharp' },
-      { id:'rounded', label:'Rounded' },
-      { id:'minimal', label:'Minimal' },
-      { id:'neon', label:'Neon' }
-    ];
-    var uiChips = document.getElementById('uiStyleChips');
-    UI_STYLES.forEach(function(s){
-      var chip = document.createElement('button');
-      chip.className = 'ui-style-chip' + (settings.uiStyle === s.id ? ' active' : '');
-      chip.textContent = s.label;
-      chip.dataset.style = s.id;
-      chip.onclick = function(){
-        settings.uiStyle = s.id;
-        saveSettings();
-        applySettings();
-        document.querySelectorAll('.ui-style-chip').forEach(function(c){ c.classList.remove('active'); });
-        chip.classList.add('active');
-      };
-      uiChips.appendChild(chip);
-    });
-
-    // Background upload
-    var bgInput = document.getElementById('bgUpload');
-    bgInput.addEventListener('change', function(e){
-      var file = e.target.files[0];
-      if(!file) return;
-      var reader = new FileReader();
-      reader.onload = function(ev){
-        settings.customBg = ev.target.result;
-        saveSettings();
-        applySettings();
-        whyToast('Background set');
-      };
-      reader.readAsDataURL(file);
-    });
-
-    document.getElementById('bgRemoveBtn').onclick = function(){
-      settings.customBg = '';
-      saveSettings();
-      applySettings();
-      whyToast('Background removed');
-    };
-
-    syncSettingsToUI();
-  }
-
-  window.whyOpenSettings = function(){
-    document.getElementById('settingsMask').classList.add('open');
-    document.getElementById('settingsPanel').classList.add('open');
-    renderCookies();
-    renderDownloads();
-  };
-
-  window.whyCloseSettings = function(){
-    document.getElementById('settingsMask').classList.remove('open');
-    document.getElementById('settingsPanel').classList.remove('open');
-  };
-
-  window.whyResetSettings = function(){
-    settings = JSON.parse(JSON.stringify(defaultSettings));
-    saveSettings();
-    syncSettingsToUI();
-    whyToast('Settings reset');
-  };
-
-  window.whyShowAbout = function(){
-    document.getElementById('aboutOverlay').classList.add('open');
-  };
-
-  // ── Settings tab nav ──
-  document.querySelectorAll('.sp-nav-btn').forEach(function(btn){
-    btn.onclick = function(){
-      document.querySelectorAll('.sp-nav-btn').forEach(function(b){ b.classList.remove('active'); });
-      btn.classList.add('active');
-      document.querySelectorAll('.sp-settings-tab').forEach(function(t){ t.classList.add('hidden'); });
-      var tab = document.getElementById('tab-' + btn.dataset.tab);
-      if(tab) tab.classList.remove('hidden');
-    };
-  });
-
-  // ── Bookmark Bar ──
-  function renderBookmarkBar(){
-    var bar = document.getElementById('bookmarkBar');
-    if(!bar) return;
-    if(!settings.showBookmarks || bookmarks.length === 0){
-      bar.classList.add('hidden');
-      return;
-    }
-    bar.classList.remove('hidden');
-    bar.innerHTML = '';
-    bookmarks.forEach(function(bm, i){
-      var pill = document.createElement('button');
-      pill.className = 'bm-pill';
-      pill.innerHTML = '<span class="bmi">' + (bm.icon || '\u2605') + '</span>' + escapeHtml(bm.title || bm.url);
-      pill.onclick = function(){ whyNavigate(bm.url); };
-      bar.appendChild(pill);
-    });
-  }
-
-  // ── Toast ──
-  var toastTimer = null;
-  window.whyToast = function(msg){
-    var el = document.getElementById('toast');
-    if(!el) return;
-    el.textContent = msg;
-    el.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2500);
-  };
-
-  // ── Helpers ──
-  function escapeHtml(s){
-    if(!s) return '';
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-  }
-
-  // ── keyboard shortcuts ──
-  // note: ctrl+l=focus url bar, ctrl+t=new tab, ctrl+w=close tab, ctrl+r=refresh, esc=close overlays.
-  // how to add a new shortcut: add a new if case inside the keydown handler below.
-  document.addEventListener('keydown', function(e){
-    var ctrl = e.ctrlKey || e.metaKey;
-    if(ctrl && (e.key === 'l' || e.key === 'L')){
-      e.preventDefault();
-      var input = document.getElementById('urlInput') || document.getElementById('homeSearch');
-      if(input){ input.focus(); input.select(); }
-    }
-    if(ctrl && (e.key === 't' || e.key === 'T')){
-      e.preventDefault();
-      newTab();
-    }
-    if(ctrl && (e.key === 'w' || e.key === 'W')){
-      e.preventDefault();
-      closeTab(activeTab);
-    }
-    if(ctrl && (e.key === 'r' || e.key === 'R')){
-      e.preventDefault();
-      var frame = document.getElementById('proxyFrame');
-      if(frame && frame.src && frame.src !== 'about:blank'){
-        frame.src = frame.src;
-        setStatus('loading');
+  function go(url){
+    if(!url) return;
+    url = url.trim();
+    if(/^[a-z]+:\/\//i.test(url) === false && !/^\/\//.test(url)){
+      if(/^[^\s]+\.[a-z]{2,}/i.test(url) && url.indexOf(' ') === -1) url = 'https://' + url;
+      else {
+        var se = SEARCH[settings.engine] || SEARCH.brave;
+        url = se + encodeURIComponent(url);
       }
     }
-    if(e.key === 'Escape'){
-      whyCloseSettings();
-      document.getElementById('aboutOverlay').classList.remove('open');
-    }
-  });
-
-  // ── event bindings ──
-  // note: on page load, binds ui elements and calls init functions.
-  document.addEventListener('DOMContentLoaded', function(){
-    // intro splash: auto-hide after 1.8s
-    setTimeout(function(){
-      var io = document.getElementById('introOverlay');
-      if(io) io.classList.add('hidden');
-      // then show terms of service if first visit
-      try{
-        if(!localStorage.getItem('why_tos_accepted')){
-          setTimeout(function(){
-            var to = document.getElementById('termsOverlay');
-            if(to) to.classList.add('open');
-          }, 900);
-        }
-      }catch(e){}
-    }, 1800);
-    // Home search
-    document.getElementById('homeSearch').addEventListener('keydown', function(e){
-      if(e.key === 'Enter') whyNavigate(this.value);
-    });
-    // URL input
-    document.getElementById('urlInput').addEventListener('keydown', function(e){
-      if(e.key === 'Enter') whyNavigate(this.value);
-    });
-    // Go button
-    document.getElementById('goBtn').onclick = function(){
-      whyNavigate(document.getElementById('urlInput').value);
-    };
-    // Nav buttons
-    document.getElementById('backBtn').onclick = goBack;
-    document.getElementById('fwdBtn').onclick = goForward;
-    document.getElementById('refreshBtn').onclick = function(){
-      var frame = document.getElementById('proxyFrame');
-      if(frame && frame.src && frame.src !== 'about:blank'){
-        frame.src = frame.src;
-        setStatus('loading');
-      }
-    };
-    document.getElementById('homeBtn').onclick = whyGoHome;
-    // Force device toggle
-    document.getElementById('forceDeviceBtn').onclick = function(){
-      if(settings.forceDevice === 'mobile') settings.forceDevice = 'pc';
-      else if(settings.forceDevice === 'pc') settings.forceDevice = 'auto';
-      else settings.forceDevice = 'mobile';
-      saveSettings();
-      updateForceDeviceBtn();
-      var f = document.getElementById('forceDevice');
-      if(f) f.value = settings.forceDevice;
-      whyToast('Device: ' + settings.forceDevice);
-    };
-    // Reader mode toggle
-    document.getElementById('readerBtn').onclick = function(){
-      settings.readableMode = !settings.readableMode;
-      saveSettings();
-      updateReaderBtn();
-      whyToast(settings.readableMode ? 'Reader mode on' : 'Reader mode off');
-      // Reload current page
-      var frame = document.getElementById('proxyFrame');
-      if(frame && frame.src && frame.src !== 'about:blank'){
-        var currentUrl = document.getElementById('urlInput').value;
-        if(currentUrl) loadProxy(currentUrl);
-      }
-    };
-    // Fullscreen
-    document.getElementById('fullscreenBtn').onclick = function(){
-      if(!document.fullscreenElement){
-        document.documentElement.requestFullscreen().catch(function(){});
-      } else {
-        document.exitFullscreen().catch(function(){});
-      }
-    };
-    // Settings
-    document.getElementById('settingsBtn').onclick = whyOpenSettings;
-    // New tab
-    document.getElementById('newTabBtn').onclick = newTab;
-    // Tab dropdown
-    document.getElementById('tabDropdownBtn').onclick = function(e){
-      e.stopPropagation();
-      var menu = document.getElementById('tabDropdownMenu');
-      menu.classList.toggle('open');
-    };
-    document.addEventListener('click', function(){
-      document.getElementById('tabDropdownMenu').classList.remove('open');
-    });
-    document.getElementById('closeOtherTabs').onclick = closeOtherTabs;
-    document.getElementById('closeAllTabs').onclick = closeAllTabs;
-    // Bookmark button
-    document.getElementById('bookmarkBtn').onclick = function(){
-      if(tabs[activeTab] && tabs[activeTab].url){
-        bookmarks.push({ title: tabs[activeTab].title || tabs[activeTab].url, url: tabs[activeTab].url, icon: '\u2605' });
-        saveBookmarks();
-        renderBookmarkBar();
-        whyToast('Bookmark added');
-      }
-    };
-
-    // Init frame message listener
-    window.addEventListener('message', function(e){
-      if(e.data && e.data.type === 'proxy:error'){
-        setStatus('error');
-      }
-    });
-
-    // Init
-    initSettingsUI();
-    renderBookmarkBar();
-    updateTabs();
-    updateNavButtons();
-    applySettings();
-
-    // Always start on homepage — don't auto-restore any tab
-    document.getElementById('homePage').classList.remove('hidden');
-    var frame = document.getElementById('proxyFrame');
-    if(frame) frame.classList.remove('active');
+    tabs[activeTab].url = url;
+    tabs[activeTab].title = url;
+    tabs[activeTab].savedSrc = buildProxy(url);
+    urlInput.value = url;
+    home.classList.add('hidden');
+    frame.src = buildProxy(url);
     renderTabs();
-  });
+    if(historyPos < historyStack.length-1) historyStack = historyStack.slice(0, historyPos+1);
+    historyStack.push(url); historyPos = historyStack.length-1;
+    updateNav();
+    setStatus('loading');
+  }
+  function setStatus(s){
+    statusText.textContent = s;
+    connDot.style.background = s==='loading' ? '#f59e0b' : s==='error' ? '#ef4444' : '#22c55e';
+  }
+  function updateNav(){
+    document.getElementById('backBtn').disabled = historyPos <= 0;
+    document.getElementById('fwdBtn').disabled = historyPos >= historyStack.length-1;
+  }
 
+  document.getElementById('goBtn').onclick = function(){ go(urlInput.value); };
+  document.getElementById('homeGo').onclick = function(){ go(document.getElementById('homeSearch').value); };
+  urlInput.addEventListener('keydown', function(e){ if(e.key==='Enter') go(urlInput.value); });
+  document.getElementById('homeSearch').addEventListener('keydown', function(e){ if(e.key==='Enter') go(document.getElementById('homeSearch').value); });
+  document.getElementById('backBtn').onclick = function(){ if(historyPos>0){ historyPos--; go(historyStack[historyPos]); } };
+  document.getElementById('fwdBtn').onclick = function(){ if(historyPos<historyStack.length-1){ historyPos++; go(historyStack[historyPos]); } };
+  document.getElementById('reloadBtn').onclick = function(){ if(frame.src && frame.src !== 'about:blank'){ frame.src = frame.src; setStatus('loading'); } };
+  document.getElementById('homeBtn').onclick = function(){ home.classList.remove('hidden'); urlInput.value=''; setStatus('ready'); };
+  document.getElementById('newTabBtn').onclick = newTab;
+
+  frame.addEventListener('load', function(){ setStatus('ready'); });
+
+  // ── quick links ──
+  function renderQL(){
+    var c = document.getElementById('quickLinks');
+    c.innerHTML = '';
+    ql.forEach(function(q){
+      if(!q || !q.url) return;
+      var a = document.createElement('a');
+      a.innerHTML = '<span class="qi">' + (q.icon||'') + '</span>' + (q.name||q.url);
+      a.href = '#'; a.dataset.url = q.url;
+      a.onclick = function(e){ e.preventDefault(); go(q.url); };
+      c.appendChild(a);
+    });
+  }
+  var qlEdit = document.getElementById('qlEdit');
+  function fillQLEdit(){ qlEdit.value = ql.map(function(q){ return (q.icon||'')+','+(q.name||'')+','+q.url; }).join('\n'); }
+  document.getElementById('qlSave').onclick = function(){
+    var out = [];
+    qlEdit.value.split('\n').forEach(function(line){
+      line = line.trim(); if(!line) return;
+      var p = line.split(',').map(function(s){ return s.trim(); });
+      if(!p[2]) return;
+      out.push({ icon:p[0], name:p[1]||p[2], url:p[2] });
+    });
+    if(out.length){ ql = out; settings.ql = ql; save(); renderQL(); }
+  };
+  document.getElementById('qlReset').onclick = function(){
+    ql = DEFAULT_QL.map(function(x){ return { icon:x[0], name:x[1], url:x[2] }; });
+    settings.ql = ql; save(); renderQL(); fillQLEdit();
+  };
+
+  // ── settings panel ──
+  var mask = document.getElementById('mask');
+  var panel = document.getElementById('panel');
+  function openPanel(){ saveProxy(); fillQLEdit(); mask.classList.add('open'); panel.classList.add('open'); }
+  function closePanel(){ mask.classList.remove('open'); panel.classList.remove('open'); }
+  document.getElementById('settingsBtn').onclick = openPanel;
+  document.getElementById('panelClose').onclick = closePanel;
+  mask.onclick = closePanel;
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closePanel(); });
+
+  // ── ping (csp-friendly img probe) ──
+  function ping(){
+    var base = workerBase();
+    var img = new Image();
+    img.onload = function(){ setStatus('ready'); };
+    img.onerror = function(){ setStatus('worker unreachable'); };
+    img.src = base + '/__why/ping.gif?_=' + Date.now();
+  }
+  setInterval(ping, 30000);
+  setTimeout(ping, 1000);
+
+  applyTheme();
+  renderQL();
+  renderTabs();
+  updateNav();
+  setStatus('ready');
 })();
 </script>
 </body>
