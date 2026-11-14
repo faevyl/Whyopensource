@@ -1,0 +1,13 @@
+{
+  "name": "why-revived",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node scripts/check-wisp.mjs",
+    "public": "bash scripts/run-public.sh"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}
