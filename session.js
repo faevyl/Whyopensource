@@ -2,17 +2,17 @@ import dgram from "node:dgram";
 import net from "node:net";
 import { BUFFER_SIZE, Close, MOTD, resolveDestination } from "./policy.js";
 
-const MAX_STREAMS = 32;
-const CONNECT_TIMEOUT_MS = 10_000;
+const MAX_STREAMS = 128;
+const CONNECT_TIMEOUT_MS = 8_000;
 const IDLE_TIMEOUT_MS = 120_000;
 const UDP_PER_SECOND = 200;
-const CONTINUE_EVERY = 16;
+const CONTINUE_EVERY = 64;
 
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
 
 export function encodePacket(type, streamId, payload = Buffer.alloc(0)) {
   const body = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
-  const out = Buffer.alloc(5 + body.length);
+  const out = Buffer.allocUnsafe(5 + body.length);
   out.writeUInt8(type, 0);
   out.writeUInt32LE(streamId >>> 0, 1);
   body.copy(out, 5);
@@ -91,7 +91,7 @@ export class WispSession {
 
   send(packet) {
     if (this.dead || this.ws.readyState !== 1) return;
-    this.ws.send(packet, { binary: true });
+    this.ws.send(packet, { binary: true, compress: false });
   }
 
   sendContinue(streamId, remaining) {
@@ -104,8 +104,27 @@ export class WispSession {
     this.send(encodePacket(0x04, streamId, Buffer.from([reason & 0xff])));
   }
 
+  queued(stream) {
+    return stream.queue.length - stream.qHead;
+  }
+
   freeSlots(stream) {
-    return Math.max(0, BUFFER_SIZE - stream.queue.length);
+    return Math.max(0, BUFFER_SIZE - this.queued(stream));
+  }
+
+  enqueue(stream, payload) {
+    stream.queue.push(payload);
+    if (stream.qHead > 48 && stream.qHead * 2 > stream.queue.length) {
+      stream.queue = stream.queue.slice(stream.qHead);
+      stream.qHead = 0;
+    }
+  }
+
+  dequeue(stream) {
+    const chunk = stream.queue[stream.qHead];
+    stream.queue[stream.qHead] = undefined;
+    stream.qHead += 1;
+    return chunk;
   }
 
   onMessage(data, isBinary) {
@@ -213,6 +232,7 @@ export class WispSession {
       port,
       address: null,
       queue: [],
+      qHead: 0,
       ready: false,
       closed: false,
       receivedSinceContinue: 0,
@@ -306,11 +326,11 @@ export class WispSession {
       }
       stream.hits.push(now);
     }
-    if (stream.queue.length >= BUFFER_SIZE) {
+    if (this.queued(stream) >= BUFFER_SIZE) {
       this.finish(stream, Close.THROTTLED);
       return;
     }
-    stream.queue.push(payload);
+    this.enqueue(stream, payload);
     this.flush(stream);
     if (stream.type === 0x01) {
       stream.receivedSinceContinue += 1;
@@ -327,8 +347,8 @@ export class WispSession {
   flush(stream) {
     if (!stream.ready || stream.closed || !stream.socket) return;
     if (stream.type === 0x02) {
-      while (stream.queue.length) {
-        const chunk = stream.queue.shift();
+      while (stream.qHead < stream.queue.length) {
+        const chunk = this.dequeue(stream);
         stream.socket.send(chunk, stream.port, stream.address, (err) => {
           if (err && !stream.closed) this.finish(stream, Close.NETWORK);
         });
@@ -338,8 +358,8 @@ export class WispSession {
 
     const socket = stream.socket;
     if (socket.destroyed) return;
-    while (stream.queue.length && !socket.writableNeedDrain) {
-      const chunk = stream.queue.shift();
+    while (stream.qHead < stream.queue.length && !socket.writableNeedDrain) {
+      const chunk = this.dequeue(stream);
       const ok = socket.write(chunk);
       if (!ok) {
         if (!stream.drainWait) {
@@ -359,7 +379,7 @@ export class WispSession {
 
   sendData(stream, chunk) {
     if (stream.closed || this.dead || this.ws.readyState !== 1) return;
-    this.ws.send(encodePacket(0x02, stream.id, chunk), { binary: true }, () => {
+    this.ws.send(encodePacket(0x02, stream.id, chunk), { binary: true, compress: false }, () => {
       const socket = stream.socket;
       if (!socket || stream.closed || stream.type !== 0x01) return;
       if (this.ws.bufferedAmount < 256 * 1024 && socket.isPaused()) socket.resume();
