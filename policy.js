@@ -4,7 +4,7 @@ import { Resolver } from "node:dns/promises";
 export const BUFFER_SIZE = 128;
 
 export const MOTD =
-  "why Revived. this wisp endpoint is public on cloudflare. Private networks and mail ports are closed.";
+  "no private networking and mail networkings for you my sir";
 
 export const Close = {
   UNSPECIFIED: 0x01,
