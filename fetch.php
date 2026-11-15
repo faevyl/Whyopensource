@@ -1,11 +1,10 @@
 <?php
 /**
- * nonstaic host fetch for why revived
- * upload this next to your index.html
+ * Same-origin page fetcher for Why Revived — PHP, not Cloudflare.
+ * Upload into InfinityFree htdocs next to WhyRevived.html.
  * UI:     fetch.php?url=  or  fetch.php?__pot=
  * Probe:  fetch.php?ping=1  /  fetch.php?ping=gif
- * WS:     pages connect from the browser
- * i recommend hosting b-cdn links and amazon web hosting services.
+ * WS:     pages connect from the browser (this host cannot 101-upgrade).
  */
 error_reporting(0);
 @set_time_limit(28);
