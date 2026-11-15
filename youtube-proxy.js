@@ -34,6 +34,11 @@ export function isYouTubeProxyPath(pathname) {
     pathname.startsWith("/api/") ||
     pathname.startsWith("/s/") ||
     pathname.startsWith("/generate_204") ||
+    pathname === "/error_204" ||
+    pathname.startsWith("/error_204") ||
+    pathname.startsWith("/ptracking") ||
+    pathname.startsWith("/api/stats") ||
+    pathname === "/manifest.webmanifest" ||
     pathname.startsWith("/opensearch")
   );
 }
@@ -81,15 +86,22 @@ function rewriteText(text, origin) {
 }
 
 function shouldRewrite(type) {
-  return type.toLowerCase().includes("html");
+  const lower = type.toLowerCase();
+  return lower.includes("html") || lower.includes("css");
+}
+
+function rewriteAssetUrls(text) {
+  return text
+    .replace(/https:\\\/\\\/([a-z0-9.-]+\.(?:gstatic\.com|ytimg\.com|ggpht\.com|googleusercontent\.com|googlevideo\.com))/gi, "\\/up\\/$1")
+    .replace(/https:\/\/([a-z0-9.-]+\.(?:gstatic\.com|ytimg\.com|ggpht\.com|googleusercontent\.com|googlevideo\.com))/gi, "/up/$1");
 }
 
 function rewriteMediaUrls(text, origin) {
   const abs = String(origin || "").replace(/\/$/, "");
   const absEsc = abs.replace(/\//g, "\\/");
   return text
-    .replace(/https:\\\/\\\/([a-z0-9.-]+\.googlevideo\.com)/gi, absEsc + "\\/up\\/$1")
-    .replace(/https:\/\/([a-z0-9.-]+\.googlevideo\.com)/gi, abs + "/up/$1");
+    .replace(/https:\\\/\\\/([a-z0-9.-]+\.(?:googlevideo\.com|gstatic\.com|ytimg\.com|ggpht\.com|googleusercontent\.com))/gi, absEsc + "\\/up\\/$1")
+    .replace(/https:\/\/([a-z0-9.-]+\.(?:googlevideo\.com|gstatic\.com|ytimg\.com|ggpht\.com|googleusercontent\.com))/gi, abs + "/up/$1");
 }
 
 const CLICK_GUARD = `<script>(function(){
@@ -120,40 +132,111 @@ function retarget(url){
 }
 function sameHere(url){
   try{
-    var a=new URL(location.href), b=new URL(url);
+    var a=new URL(location.href), b=new URL(url, location.href);
     return a.pathname===b.pathname&&a.search===b.search&&a.hash===b.hash;
   }catch(e){ return false; }
 }
-function go(url){
-  var next=retarget(url)||url;
-  if(!next||sameHere(next)) return;
-  location.assign(next);
+function pageKey(u){
+  var path=u.pathname||"/";
+  var cut=path.match(/^\\/up\\/[^/]+(\\/.*)?$/);
+  if(cut) path=cut[1]||"/";
+  return path+"|"+(u.searchParams.get("v")||"")+"|"+(u.searchParams.get("search_query")||u.searchParams.get("q")||"")+"|"+(u.searchParams.get("list")||"");
+}
+function samePage(url){
+  try{
+    return pageKey(new URL(location.href))===pageKey(new URL(url, location.href));
+  }catch(e){ return false; }
+}
+var storm=false, navCount=0, navStamp=0;
+try{
+  var mark=pageKey(new URL(location.href));
+  var prev=String(sessionStorage.getItem("why_yt_load")||"").split("~");
+  var then=Number(prev[0])||0, count=Number(prev[1])||0, old=prev.slice(2).join("~");
+  var now=Date.now();
+  count=(old===mark && now-then<8000)?count+1:1;
+  sessionStorage.setItem("why_yt_load", now+"~"+count+"~"+mark);
+  if(count>2) storm=true;
+}catch(e){}
+function tooMany(){
+  var now=Date.now();
+  if(now-navStamp>5000){ navCount=0; navStamp=now; }
+  navCount++;
+  return storm||navCount>2;
+}
+function follow(url){
+  var next=retarget(url);
+  if(!next) return false;
+  if(sameHere(next)) return true;
+  if(samePage(next)||tooMany()){
+    try{ history.replaceState(history.state,"", next); }catch(e){}
+    return true;
+  }
+  location.replace(next);
+  return true;
+}
+function armLocation(win){
+  if(!win) return;
+  try{
+    var proto=win.Location&&win.Location.prototype;
+    if(!proto||proto.__whyLoc) return;
+    var hrefDesc=Object.getOwnPropertyDescriptor(proto,"href");
+    var nativeAssign=proto.assign, nativeReplace=proto.replace;
+    if(hrefDesc&&hrefDesc.set){
+      Object.defineProperty(proto,"href",{
+        configurable:true,
+        get:hrefDesc.get,
+        set:function(v){
+          try{ if(follow(v)) return; }catch(e){}
+          hrefDesc.set.call(this,v);
+        }
+      });
+    }
+    proto.assign=function(v){
+      try{ if(follow(v)) return; }catch(e){}
+      return nativeAssign.call(this,v);
+    };
+    proto.replace=function(v){
+      try{ if(follow(v)) return; }catch(e){}
+      return nativeReplace.call(this,v);
+    };
+    proto.__whyLoc=true;
+  }catch(e){}
+}
+armLocation(window);
+var MEDIA=/(^|\\.)(?:gstatic\\.com|ytimg\\.com|ggpht\\.com|googleusercontent\\.com|googlevideo\\.com)$/i;
+function localMedia(url){
+  try{
+    var u=new URL(url, location.href);
+    if(u.origin===location.origin||!MEDIA.test(u.hostname)) return url;
+    return location.origin+"/up/"+u.hostname+u.pathname+u.search+u.hash;
+  }catch(e){ return url; }
+}
+if(window.fetch){
+  var origFetch=window.fetch;
+  window.fetch=function(input, init){
+    try{
+      if(typeof input==="string"||input instanceof URL) input=localMedia(String(input));
+      else if(input&&input.url) input=new Request(localMedia(input.url), input);
+    }catch(e){}
+    return origFetch.call(this, input, init);
+  };
 }
 try{
-  var proto=Location.prototype;
-  var hrefDesc=Object.getOwnPropertyDescriptor(proto,"href");
-  var nativeAssign=proto.assign, nativeReplace=proto.replace;
-  if(hrefDesc&&hrefDesc.set){
-    Object.defineProperty(proto,"href",{
+  var xhrOpen=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(method, url){
+    try{ if(typeof url==="string"&&arguments.length>1) arguments[1]=localMedia(url); }catch(e){}
+    return xhrOpen.apply(this, arguments);
+  };
+}catch(e){}
+try{
+  var srcDesc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,"src");
+  if(srcDesc&&srcDesc.set){
+    Object.defineProperty(HTMLImageElement.prototype,"src",{
       configurable:true,
-      get:hrefDesc.get,
-      set:function(v){
-        try{
-          var next=retarget(v);
-          if(next){ if(!sameHere(next)) hrefDesc.set.call(this,next); return; }
-        }catch(e){}
-        hrefDesc.set.call(this,v);
-      }
+      get:srcDesc.get,
+      set:function(v){ srcDesc.set.call(this, localMedia(v)); }
     });
   }
-  proto.assign=function(v){
-    try{ var next=retarget(v); if(next){ if(!sameHere(next)) nativeAssign.call(this,next); return; } }catch(e){}
-    return nativeAssign.call(this,v);
-  };
-  proto.replace=function(v){
-    try{ var next=retarget(v); if(next){ if(!sameHere(next)) nativeReplace.call(this,next); return; } }catch(e){}
-    return nativeReplace.call(this,v);
-  };
 }catch(e){}
 function armHistory(win){
   if(!win) return;
@@ -170,11 +253,11 @@ function armHistory(win){
 }
 armHistory(window);
 try{
-  function armFrame(node){ try{ if(node&&node.tagName==="IFRAME") armHistory(node.contentWindow); }catch(e){} }
+  function armFrame(node){ try{ if(node&&node.tagName==="IFRAME"){ armHistory(node.contentWindow); armLocation(node.contentWindow); } }catch(e){} }
   var origCreate=document.createElement;
   document.createElement=function(){
     var el=origCreate.apply(this, arguments);
-    try{ if(String(arguments[0]||"").toLowerCase()==="iframe") armHistory(el.contentWindow); }catch(e){}
+    try{ if(String(arguments[0]||"").toLowerCase()==="iframe"){ armHistory(el.contentWindow); armLocation(el.contentWindow); } }catch(e){}
     return el;
   };
   var origAppend=Node.prototype.appendChild, origInsert=Node.prototype.insertBefore;
@@ -185,7 +268,7 @@ try{
   var nativeOpen=window.open;
   window.open=function(url,target,features){
     var next=url? (retarget(url)||url) : url;
-    if(next&&target&&/^_(top|parent)$/i.test(String(target))){ go(next); return null; }
+    if(next&&target&&/^_(top|parent)$/i.test(String(target))){ follow(next); return null; }
     return nativeOpen.call(window, next, target, features);
   };
 }catch(e){}
@@ -201,7 +284,7 @@ document.addEventListener("click",function(ev){
   var next=retarget(a.href);
   if(next){
     ev.preventDefault(); ev.stopImmediatePropagation();
-    if(!sameHere(next)) location.assign(next);
+    follow(a.href);
     return;
   }
   var u; try{ u=new URL(a.href, location.href); }catch(e){ return; }
@@ -219,7 +302,7 @@ document.addEventListener("submit",function(ev){
       var q=new URLSearchParams(new FormData(f));
       q.forEach(function(v,k){ u.searchParams.append(k,v); });
       stripTheme(u);
-      if(!sameHere(u.href)) location.assign(u.href);
+      follow(u.href);
     }
   }catch(e){}
 },true);
@@ -280,15 +363,15 @@ export async function handleYouTubeProxy(req, res) {
 
   const headers = {
     Host: target.host,
-    "User-Agent": UA,
-    Accept: req.headers.accept || "*/*",
-    "Accept-Language": req.headers["accept-language"] || "en-US,en;q=0.9",
+    Referer: "https://" + (target.host.endsWith("youtube.com") || target.host.endsWith("youtube-nocookie.com") ? "www.youtube.com/" : target.host + "/"),
+    Origin: "https://" + (target.host.endsWith("youtube.com") || target.host.endsWith("youtube-nocookie.com") ? "www.youtube.com" : target.host),
   };
-  if (req.headers["content-type"]) headers["Content-Type"] = req.headers["content-type"];
-  if (req.headers.range) headers.Range = req.headers.range;
+  const drop = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive", "origin", "referer", "cookie", "accept-encoding"]);
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (drop.has(key) || value == null) continue;
+    headers[key] = Array.isArray(value) ? value.join(", ") : value;
+  }
   if (req.headers.cookie) headers.Cookie = req.headers.cookie;
-  headers.Referer = "https://www.youtube.com/";
-  headers.Origin = "https://www.youtube.com";
 
   const secure = (req.headers["x-forwarded-proto"] || "").includes("https");
   const upstream = https.request(
@@ -328,9 +411,10 @@ export async function handleYouTubeProxy(req, res) {
       });
       up.on("end", () => {
         let text = Buffer.concat(chunks).toString("utf8");
-        text = rewriteHtmlOnly(text, origin);
-        if (type.includes("html") && text.includes("<head")) {
-          text = text.replace(/<head([^>]*)>/i, `<head$1>${CLICK_GUARD}`);
+        if (type.includes("css")) text = rewriteAssetUrls(text);
+        else {
+          text = rewriteHtmlOnly(text, origin);
+          if (text.includes("<head")) text = text.replace(/<head([^>]*)>/i, `<head$1>${CLICK_GUARD}`);
         }
         const payload = Buffer.from(text);
         responseHeaders["Content-Length"] = payload.length;
