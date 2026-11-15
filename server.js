@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { BUFFER_SIZE, MOTD } from "./policy.js";
 import { WispSession } from "./session.js";
-import { handleYouTubeProxy, isYouTubeProxyPath } from "./youtube-proxy.js";
+import { handleYouTubeProxy, isYouTubeProxyPath, youtubeAppRedirect } from "./youtube-proxy.js";
 
 const PORT = Number(process.env.PORT) || 8741;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -18,26 +18,36 @@ const HTML_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "whyre
 const perIp = new Map();
 let connections = 0;
 
+let originCache = { at: 0, origin: null, hosts: [] };
+
 function readPublicOrigin() {
+  const now = Date.now();
+  if (now - originCache.at < 5000) return originCache.origin;
+  let origin = null;
   try {
     const text = fs.readFileSync(PUBLIC_URL_FILE, "utf8").trim();
-    if (!text) return null;
-    const url = new URL(text);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    return url.origin;
+    if (text) {
+      const url = new URL(text);
+      if (url.protocol === "https:" || url.protocol === "http:") origin = url.origin;
+    }
   } catch {
-    return null;
+    origin = null;
   }
+  let hosts = [];
+  if (origin) {
+    try {
+      hosts = [new URL(origin).hostname];
+    } catch {
+      hosts = [];
+    }
+  }
+  originCache = { at: now, origin, hosts };
+  return origin;
 }
 
 function blockedHosts() {
-  const origin = readPublicOrigin();
-  if (!origin) return [];
-  try {
-    return [new URL(origin).hostname];
-  } catch {
-    return [];
-  }
+  readPublicOrigin();
+  return originCache.hosts;
 }
 
 function clientKey(req) {
@@ -86,8 +96,16 @@ const server = http.createServer((req, res) => {
     send(res, 400, "Bad request\n", { "Content-Type": "text/plain; charset=utf-8" }, method);
     return;
   }
-  const youtubeAppPath = /^\/(?:shorts\/|watch(?:\/|$)|results(?:\/|$)|feed\/|playlist(?:\/|$)|channel\/|@|c\/|user\/|embed\/|live\/|clip\/|post\/|hashtag\/)/.test(pathname);
-  const iframeHome = req.headers["sec-fetch-dest"] === "iframe" && (pathname === "/" || pathname === "/yt" || youtubeAppPath);
+  const dest = String(req.headers["sec-fetch-dest"] || "");
+  const youtubeTarget = new URL(req.url || "/", "http://127.0.0.1");
+  const bareYouTube = youtubeAppRedirect(pathname, youtubeTarget.search);
+  if (bareYouTube && (method === "GET" || method === "HEAD") && (dest === "" || dest === "document" || dest === "iframe")) {
+    res.writeHead(302, { Location: bareYouTube, "Cache-Control": "no-store" });
+    res.end();
+    return;
+  }
+  const youtubeAppPath = bareYouTube !== "";
+  const iframeHome = dest === "iframe" && (pathname === "/" || pathname === "/yt" || youtubeAppPath);
   if (iframeHome || isYouTubeProxyPath(pathname)) {
     if (iframeHome) {
       const search = new URL(req.url || "/", "http://127.0.0.1").search;
@@ -165,6 +183,8 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({
   noServer: true,
   maxPayload: 1024 * 1024,
+  perMessageDeflate: false,
+  skipUTF8Validation: true,
   handleProtocols(protocols) {
     return protocols.values().next().value || false;
   },
@@ -197,6 +217,7 @@ server.on("upgrade", (req, socket, head) => {
     return;
   }
 
+  try { socket.setNoDelay(true); } catch { /* already closing */ }
   wss.handleUpgrade(req, socket, head, (ws) => {
     connections += 1;
     perIp.set(ip, (perIp.get(ip) || 0) + 1);
