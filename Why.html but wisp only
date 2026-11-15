@@ -1639,7 +1639,8 @@
     _v4: true,
     _v5: true,
     _v6: true,
-    _v7: true
+    _v7: true,
+    _v8: true
   };
   if(/trycloudflare\.com$/i.test(location.hostname || '')){
     defaultSettings.engine = 'wisp';
@@ -1970,9 +1971,26 @@
     var searchUrl = SEARCH[engine] || SEARCH.brave;
     loadProxy(searchUrl + encodeURIComponent(q));
   }
+  function normalizeYouTubeNav(value){
+    try{
+      var u = new URL(value, location.href);
+      if(u.origin !== location.origin) return value;
+      var up = u.pathname.match(/^\/up\/([a-z0-9.-]+)(\/.*)?$/i);
+      if(up && /youtube(?:-nocookie)?\.com$/i.test(up[1])){
+        u.searchParams.delete('theme');
+        return 'https://' + up[1] + (up[2] || '/') + u.search + u.hash;
+      }
+      if(/^\/(?:shorts\/|watch(?:\/|$)|results(?:\/|$)|feed(?:\/|$)|playlist(?:\/|$)|channel\/|@|c\/|user\/|embed\/|live\/|clip\/|post\/|hashtag\/)/.test(u.pathname)){
+        u.searchParams.delete('theme');
+        return 'https://www.youtube.com' + u.pathname + u.search + u.hash;
+      }
+    }catch(e){}
+    return value;
+  }
   window.whyNavigate = function(value){
     if(!value) return;
     value = value.trim();
+    value = normalizeYouTubeNav(value);
     if(!value || /^about:/i.test(value)) return;
     try{
       var jump = new URL(value, location.href);
@@ -2382,7 +2400,7 @@
   };
 
   // ── WASM / Wisp (libcurl.js) ──
-  var LIBCURL_FULL = 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7.4/libcurl_full.js';
+  var LIBCURL_FULL = 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7.5/libcurl_full.js';
   var WISP_PRIMARY = 'wss://heading-moderate-consolidation-mechanical.trycloudflare.com/wisp/';
   var WISP_FALLBACK = 'wss://wisp.mercurywork.shop/';
   var wispReady = false;
@@ -2404,11 +2422,29 @@
     var list = wispCandidates();
     return list[wispServerIdx % list.length];
   }
+  var curlSession = null;
+  var curlSocket = '';
+  var navHop = '';
+  function openCurlSession(){
+    if(curlSession || typeof libcurl === 'undefined' || typeof libcurl.HTTPSession !== 'function') return;
+    try{ curlSession = new libcurl.HTTPSession({ enable_cookies: true }); }catch(e){ curlSession = null; }
+  }
+  function closeCurlSession(){
+    if(!curlSession) return;
+    try{ if(curlSession.close) curlSession.close(); }catch(e){}
+    curlSession = null;
+  }
   function wispPoint(advance){
     if(advance) wispServerIdx = (wispServerIdx + 1) % wispCandidates().length;
     try{
       libcurl.transport = 'wisp';
-      libcurl.set_websocket(getWispServer());
+      var next = getWispServer();
+      libcurl.set_websocket(next);
+      if(curlSocket !== next){
+        curlSocket = next;
+        closeCurlSession();
+        openCurlSession();
+      }
     }catch(e){}
   }
   function injectScript(src, ok, fail){
@@ -2463,9 +2499,19 @@
     u += settings.antiDetect ? '&anti_detect=1' : '&anti_detect=0';
     return u;
   }
+  function fetchHop(opts){
+    if(opts && opts.hop) return opts.hop;
+    if(navHop) return navHop;
+    var engine = whyEngine();
+    if(engine === 'libcurl') return 'libcurl';
+    if(engine === 'wisp' || engine === 'auto' || WHY_WISP_ONLY) return 'wisp';
+    return '';
+  }
   function wispFetch(url, opts){
     opts = opts || {};
-    if((settings.engine === 'wisp' || settings.transport === 'wisp') && wispReady && typeof libcurl !== 'undefined' && typeof libcurl.fetch === 'function'){
+    var hop = fetchHop(opts);
+    var canCurl = hop && wispReady && typeof libcurl !== 'undefined' && typeof libcurl.fetch === 'function';
+    if(canCurl){
       return new Promise(function(resolve, reject){
         var init = {};
         if(opts.method) init.method = opts.method;
@@ -2475,7 +2521,13 @@
         var timeout = opts.timeout || 12000;
         var timer = setTimeout(function(){ if(!settled){ settled = true; reject(new Error('wisp fetch timed out')); } }, timeout);
         try{
-          libcurl.fetch(url, init).then(function(r){
+          var fetchFn = libcurl.fetch.bind(libcurl);
+          if(hop === 'libcurl'){
+            openCurlSession();
+            if(!curlSession || !curlSession.fetch) throw new Error('libcurl session missing');
+            fetchFn = curlSession.fetch.bind(curlSession);
+          }
+          fetchFn(url, init).then(function(r){
             if(!settled){ settled = true; clearTimeout(timer); resolve(r); }
           }, function(e){
             if(!settled){ settled = true; clearTimeout(timer); reject(e); }
@@ -2483,9 +2535,31 @@
         }catch(e){ if(!settled){ settled = true; clearTimeout(timer); reject(e); } }
       });
     }
+    if(hop === 'wisp' || hop === 'libcurl') return Promise.reject(new Error('libcurl is not ready'));
     var method = (opts.method || 'GET').toUpperCase();
     if(method !== 'GET' && method !== 'HEAD') return Promise.reject(new Error('php raw fetch is GET only'));
     return fetch(phpRawUrl(url), { method: method, cache: 'no-store', credentials: 'same-origin' });
+  }
+  function tlsHeaders(resp){
+    var headers = {};
+    var raw = resp && resp.raw_headers;
+    if(raw && raw.length){
+      for(var i = 0; i < raw.length; i++){
+        var pair = raw[i];
+        if(!pair || pair.length < 2) continue;
+        var key = String(pair[0] || '').toLowerCase();
+        var val = pair[1] == null ? '' : String(pair[1]);
+        if(!key) continue;
+        if(key === 'set-cookie'){
+          headers[key] = headers[key] ? (headers[key] + '\n' + val) : val;
+        } else {
+          headers[key] = headers[key] ? (headers[key] + ', ' + val) : val;
+        }
+      }
+      return headers;
+    }
+    try{ if(resp && resp.headers && resp.headers.forEach) resp.headers.forEach(function(v, k){ headers[String(k).toLowerCase()] = v; }); }catch(e){}
+    return headers;
   }
   function b64FromU8(u8){
     var chunk = 0x8000, s = '';
@@ -2520,6 +2594,7 @@
     val = String(val).trim();
     if(!val) return null;
     var low = val.toLowerCase();
+    if(low.indexOf('https://') === 0 || low.indexOf('http://') === 0) return val;
     if(/^(javascript|data|mailto|tel|sms|about|blob|file|ws|wss|chrome|moz-extension|chrome-extension):/.test(low)) return null;
     if(low.charAt(0) === '#') return null;
     try{ return new URL(val, baseUrl).href; }catch(e){ return null; }
@@ -2546,7 +2621,7 @@
     html = String(html).replace(/<base\b[^>]*>/gi, '');
     html = html.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?\s*content-security-policy["']?[^>]*>/gi, '');
     html = html.replace(/<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>/gi, function(block){
-      if(/^<style/i.test(block)) block = block.replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, function(m, q, u){
+      if(/^<style/i.test(block) && block.indexOf('url(') !== -1) block = block.replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, function(m, q, u){
         if(/^(data:|blob:|#)/i.test(u)) return m;
         var out = absUrl(u, baseUrl);
         return out ? ('url(' + (q || '"') + out + (q || '"') + ')') : m;
@@ -2562,7 +2637,7 @@
       var quote = q.charAt(0) === '"' ? '"' : "'";
       return pre + attr + '=' + quote + out + quote;
     });
-    html = html.replace(/(\s(?:srcset|data-srcset)\s*=\s*)(?:"([^"]*)"|'([^']*)')/gi, function(m, pre, dq, sq){
+    if(html.indexOf('srcset') !== -1) html = html.replace(/(\s(?:srcset|data-srcset)\s*=\s*)(?:"([^"]*)"|'([^']*)')/gi, function(m, pre, dq, sq){
       var set = (dq !== undefined) ? dq : sq;
       if(!set) return m;
       var parts = set.split(',');
@@ -2575,11 +2650,11 @@
       }
       return pre + '"' + parts.join(', ') + '"';
     });
-    html = html.replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, function(m, q, u){
+    if(html.indexOf('url(') !== -1) html = html.replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi, function(m, q, u){
       var out = absUrl(u, baseUrl);
       return out ? ('url(' + q + out + q + ')') : m;
     });
-    html = html.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, function(full){
+    if(html.indexOf('refresh') !== -1) html = html.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, function(full){
       var contentMatch = full.match(/content\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i);
       var content = contentMatch ? (contentMatch[2] || contentMatch[3] || contentMatch[4] || '') : '';
       var parts = String(content).match(/^\s*(\d+)\s*(?:[;,]\s*url\s*=\s*['"]?([^'">\s]+))?/i);
@@ -2588,7 +2663,7 @@
       var target = parts[2] ? (absUrl(parts[2], baseUrl) || baseUrl) : baseUrl;
       return '<meta data-why-refresh="' + attrEscape(delay + ';' + target) + '">';
     });
-    html = html.replace(/<link\b([^>]*)>/gi, function(full, attrs){
+    if(html.indexOf('<link') !== -1) html = html.replace(/<link\b([^>]*)>/gi, function(full, attrs){
       var relMatch = attrs.match(/\srel\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
       if(!relMatch) return full;
       var rel = relMatch[2] !== undefined ? relMatch[2] : (relMatch[3] !== undefined ? relMatch[3] : relMatch[4]);
@@ -2600,7 +2675,7 @@
       return '<link' + attrs.replace(relMatch[0], ' rel="' + attrEscape(prefixed) + '"') + '>';
     });
     html = html.replace(/\u0000WHYKEEP(\d+)\u0000/g, function(_, n){ return kept[+n] || ''; });
-    html = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, function(m, attrs, body){
+    if(html.indexOf('location') !== -1) html = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, function(m, attrs, body){
       if(/data-why-src|\ssrc\s*=/i.test(attrs)) return m;
       if(/type\s*=\s*["'][^"']*json/i.test(attrs)) return m;
       if(!/\blocation\b/.test(body)) return m;
@@ -3189,8 +3264,7 @@
   }
   function handleWispFetchResponse(source, id, resp){
     resp.arrayBuffer().then(function(buf){
-      var headers = {};
-      try{ resp.headers.forEach(function(v, k){ headers[k] = v; }); }catch(e){}
+      var headers = tlsHeaders(resp);
       var ct = headers['content-type'] || '';
       var text = isTextType(ct);
       var payload = '';
@@ -3339,9 +3413,8 @@
   }
   function renderWispResponse(url, resp, token, attempt){
     var frame = document.getElementById('proxyFrame');
-    var headers = {};
-    var ct = '';
-    try{ resp.headers.forEach(function(v, k){ headers[k] = v; }); ct = headers['content-type'] || ''; }catch(e){}
+    var headers = tlsHeaders(resp);
+    var ct = headers['content-type'] || '';
     if(!resp || !resp.arrayBuffer || !resp.status){
       wispNoteMiss();
       if(!wispTryNext(url, token, attempt)) wispMiss(token, url);
@@ -3351,10 +3424,14 @@
       if(token !== undefined && token !== navToken) return;
       var isHtml = /html/i.test(ct);
       var text = '';
-      if(isHtml){
+      if(isHtml || navHop === 'libcurl'){
         var charset = getCharset(ct) || 'utf-8';
         var dec; try{ dec = new TextDecoder(charset); }catch(e){ dec = new TextDecoder('utf-8'); }
         text = dec.decode(buf);
+        if(!isHtml){
+          var lead = String(text).replace(/^\uFEFF/, '').trim().slice(0, 240).toLowerCase();
+          isHtml = lead.indexOf('<!doctype html') === 0 || lead.indexOf('<html') === 0;
+        }
       }
       if(isHtml && String(text).replace(/^\uFEFF/, '').trim().charAt(0) === '<'){
         if(/Cloudflare Tunnel error|Error 1033|Error 530|origin is unreachable|Bad Gateway/i.test(text)){
@@ -3366,7 +3443,7 @@
         var title = extractTitle(text);
         if(title && tabs[activeTab]){ tabs[activeTab].title = title; updateTabs(); }
         frameDoc(injectPatcher(rewriteHtml(text, url), url));
-        setStatus('wisp');
+        setStatus(navHop === 'libcurl' ? 'libcurl' : 'wisp');
         return;
       } else {
         var type = (ct.split(';')[0] || '').trim() || 'application/octet-stream';
@@ -3392,8 +3469,23 @@
   }
   function wispMiss(token, url){
     if(token !== undefined && token !== navToken) return;
+    var engine = whyEngine();
+    if(engine === 'auto' && navHop === 'wisp' && wispReady){
+      navHop = 'libcurl';
+      setStatus('loading');
+      try{ whyToast('Wisp did not answer. Trying libcurl.'); }catch(e){}
+      wispFetch(url, { timeout: 20000, hop: 'libcurl' }).then(function(resp){
+        if(token !== undefined && token !== navToken) return;
+        renderWispResponse(url, resp, token, 99);
+      }, function(){
+        if(token !== undefined && token !== navToken) return;
+        wispMiss(token, url);
+      });
+      return;
+    }
     setStatus('wisp-down');
     if(url && !WHY_WISP_ONLY){
+      navHop = 'php';
       phpLoad(url);
       try{ whyToast('Wisp did not answer.'); }catch(e){}
       return;
@@ -3457,19 +3549,23 @@
       setStatus('wisp');
       return;
     }
-    if(!WHY_WISP_ONLY && settings.engine !== 'wisp' && settings.transport !== 'wisp'){
-      phpLoad(url);
+    var engine = whyEngine();
+    if(engine === 'libcurl' || engine === 'wisp' || engine === 'auto' || WHY_WISP_ONLY){
+      navHop = engine === 'libcurl' ? 'libcurl' : 'wisp';
+      if(wispFail && !wispLoading && !wispReady) wispFail = false;
+      if(!wispReady && !wispFail) initWisp();
+      if(wispReady && !wispFail){ wispLoad(url, token, 0); return; }
+      var waited = 0;
+      var iv = setInterval(function(){
+        waited += 200;
+        if(token !== navToken){ clearInterval(iv); return; }
+        if(wispReady && !wispFail){ clearInterval(iv); wispLoad(url, token, 0); }
+        else if(wispFail || waited >= 8000){ clearInterval(iv); wispMiss(token, url); }
+      }, 200);
       return;
     }
-    if(!wispReady && !wispFail) initWisp();
-    if(wispReady && !wispFail){ wispLoad(url, token, 0); return; }
-    var waited = 0;
-    var iv = setInterval(function(){
-      waited += 200;
-      if(token !== navToken){ clearInterval(iv); return; }
-      if(wispReady && !wispFail){ clearInterval(iv); wispLoad(url, token, 0); }
-      else if(wispFail || waited >= 8000){ clearInterval(iv); wispMiss(token, url); }
-    }, 200);
+    navHop = 'php';
+    phpLoad(url);
   }
   function handleWispFrameMessage(e){
     var msg = e.data;
@@ -3655,9 +3751,11 @@
   }
   var proxyFrameEl = document.getElementById('proxyFrame');
   if(proxyFrameEl) proxyFrameEl.addEventListener('load', function(){
-    // a finished frame load means the page arrived — clear the loading state
-    try{ setStatus('idle'); }catch(e){}
-    // slight delay so the interceptor script has run before we ping
+    try{
+      if(navHop === 'libcurl') setStatus('libcurl');
+      else if(navHop === 'wisp') setStatus('wisp');
+      else setStatus('idle');
+    }catch(e){}
     setTimeout(pingIframe, 150);
   });
 
@@ -3669,7 +3767,8 @@
     dot.className = 'status-dot';
     if(s === 'loading'){ dot.classList.add('loading'); if(label) label.textContent = 'Loading'; if(bst) bst.textContent = 'Loading...'; }
     else if(s === 'wisp-connecting' || s === 'wasm'){ if(label) label.textContent = 'WASM'; if(bst) bst.textContent = 'WASM + PHP'; }
-    else if(s === 'wisp'){ if(label) label.textContent = 'WASM'; if(bst) bst.textContent = 'WASM + PHP'; }
+    else if(s === 'wisp'){ if(label) label.textContent = 'Wisp'; if(bst) bst.textContent = 'Wisp'; }
+    else if(s === 'libcurl'){ if(label) label.textContent = 'Libcurl'; if(bst) bst.textContent = 'Libcurl'; }
     else if(s === 'wisp-down'){ if(label) label.textContent = 'PHP'; if(bst) bst.textContent = 'PHP iframe'; }
     else if(s === 'error'){ dot.classList.add('error'); if(label) label.textContent = 'Error'; if(bst) bst.textContent = 'Connection error'; }
     else { if(label) label.textContent = 'Connected'; if(bst) bst.textContent = 'Ready'; }
@@ -4439,7 +4538,7 @@
     var transportEl = document.getElementById('transportChoice');
     if(transportEl){
       settings.engine = transportEl.value || 'fetch';
-      settings.transport = settings.engine === 'wisp' ? 'wisp' : ((settings.engine === 'wasm' || settings.engine === 'both') ? 'wasm' : 'php');
+      settings.transport = (settings.engine === 'auto' || settings.engine === 'wisp' || settings.engine === 'libcurl') ? settings.engine : ((settings.engine === 'wasm' || settings.engine === 'both') ? 'wasm' : 'php');
     }
     var wispServerEl = document.getElementById('wispServer');
     if(wispServerEl) settings.wispServer = wispServerEl.value.trim();
@@ -4537,7 +4636,7 @@
     var wispServerInput = document.getElementById('wispServer');
     if(transportChoiceEl) transportChoiceEl.addEventListener('change', function(){
       syncUIToSettings();
-      if(settings.engine === 'wisp'){
+      if(settings.engine === 'wisp' || settings.engine === 'libcurl' || settings.engine === 'auto'){
         wispReady = false;
         wispFail = false;
         wispLoading = false;
@@ -4547,7 +4646,7 @@
     if(wispServerInput) wispServerInput.addEventListener('change', function(){
       wispServerIdx = 0;
       syncUIToSettings();
-      if(settings.engine === 'wisp'){
+      if(settings.engine === 'wisp' || settings.engine === 'libcurl' || settings.engine === 'auto'){
         wispReady = false;
         wispFail = false;
         wispLoading = false;
@@ -5880,7 +5979,7 @@
 
     // Init
     initSettingsUI();
-    if(settings.engine === 'wisp') initWisp();
+    if(settings.engine === 'wisp' || settings.engine === 'libcurl' || settings.engine === 'auto') initWisp();
     renderBookmarkBar();
     renderQuickLinks();
     updateTabs();
