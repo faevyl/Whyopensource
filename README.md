@@ -1,6 +1,6 @@
 # Why Revived
 
-Why revived is the most advanced web proxy you can find, funded by nothing but spite of the school system.
+Why revived is the most advanced web proxy you can find, funded by nothing but spite of surveillance
 
 - Also with three diffrent web engines, Wisp, Fetch.php (does not bypass cors sadly), libcurl.js (does bypass cors.)
 Big creds to [ading2210](https://github.com/ading2210), who made [Sandstone](https://github.com/ading2210/sandstone), and to Nautilus Labs, who made Gust.
