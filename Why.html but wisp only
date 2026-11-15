@@ -2,9 +2,9 @@
 <html lang="en" class="theme-chrome ui-chrome density-normal corners-soft type-sans">
 <head>
 <!--
-  note: normal why revived but only with wisp.
+  note:no you cant look at this devlog here
   public site: https://urbanshade.is-best.net/?i=1
-  public site: https://heading-moderate-consolidation-mechanical.trycloudflare.com/
+
   terms of service:
     - you may NOT share the proxy link publicly.
     - you may NOT sell this software or any part of it.
@@ -2396,8 +2396,8 @@
     loadYouTube(q);
   };
 
-  // ── WASM / Wisp (libcurl.js) ──
-  var LIBCURL_FULL = 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7.5/libcurl_full.js';
+  // ── Wisp and our Libcurl client ──
+  var LIBCURL_FULL = '/libcurl.js';
   var WISP_PRIMARY = 'wss://heading-moderate-consolidation-mechanical.trycloudflare.com/wisp/';
   var WISP_FALLBACK = 'wss://wisp.mercurywork.shop/';
   var wispReady = false;
@@ -3822,17 +3822,63 @@
     if(tb) tb.classList.remove('hidden');
   }
 
+  function frameLocation(frame){
+    try{
+      var href = frame.contentWindow.location.href;
+      if(href && href.indexOf('about:') !== 0) return href;
+    }catch(e){}
+    var src = frame.getAttribute('src') || '';
+    if(src && src.indexOf('about:') !== 0) return src;
+    return '';
+  }
+  function publicFrameUrl(href){
+    try{
+      var u = new URL(href, location.href);
+      var cut = u.pathname.match(/^\/up\/([^/]+)(\/.*)?$/);
+      if(!cut) return '';
+      return 'https://' + cut[1] + (cut[2] || '/') + u.search + u.hash;
+    }catch(e){ return ''; }
+  }
+  function rememberTab(){
+    var frame = document.getElementById('proxyFrame');
+    var tab = tabs[activeTab];
+    if(!tab || !frame || !tab.url || !frame.classList.contains('active')) return;
+    var html = '';
+    if(frame.getAttribute('srcdoc') != null){
+      try{
+        var doc = frame.contentDocument;
+        if(doc && doc.documentElement) html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+      }catch(e){}
+      tab.doc = html || frame.__whyDoc || tab.doc || '';
+      tab.frameUrl = '';
+    } else {
+      var loc = frameLocation(frame);
+      tab.frameUrl = loc;
+      tab.doc = '';
+      var pub = publicFrameUrl(loc);
+      if(pub) tab.url = pub;
+    }
+    try{
+      var title = frame.contentDocument && frame.contentDocument.title;
+      if(title) tab.title = title;
+    }catch(e){}
+  }
+  function showFrameUrl(frame, url){
+    frame.__whyDoc = '';
+    try{ frame.removeAttribute('srcdoc'); }catch(e){}
+    frame.classList.add('active');
+    if(frame.src === url){
+      try{ frame.contentWindow.location.replace(url); }catch(e){ frame.src = url; }
+    } else frame.src = url;
+  }
   function switchTab(i){
     if(i === activeTab) return;
-    // Save current tab state
-    var frame = document.getElementById('proxyFrame');
-    if(frame && frame.src && frame.src !== 'about:blank'){
-      tabs[activeTab].savedSrc = frame.src;
-    }
+    rememberTab();
     activeTab = i;
     updateTabs();
     restoreTab(i);
     updateNavButtons();
+    saveTabs();
   }
 
   function restoreTab(i){
@@ -3841,26 +3887,27 @@
     var frame = document.getElementById('proxyFrame');
     var bp = document.getElementById('blockPage');
     var input = document.getElementById('urlInput');
+    if(!tab) return;
     if(bp) bp.classList.remove('open');
     if(tab.url){
-      if(WHY_WISP_ONLY){
-        dispatchTransport(tab.url);
-        if(input) input.value = tab.url;
-        var idxW = historyStack.indexOf(tab.url);
-        if(idxW >= 0) historyPosition = idxW;
-        setStatus('wisp');
-        return;
-      }
       if(home) home.classList.add('hidden');
-      if(frame){
-        frame.classList.add('active');
-        frame.src = tab.savedSrc || browseUrl(tab.url);
-      }
+      if(frame) frame.classList.add('active');
       if(input) input.value = tab.url;
-      // Restore history position
       var idx = historyStack.indexOf(tab.url);
       if(idx >= 0) historyPosition = idx;
-      setStatus('idle');
+      if(tab.doc){
+        navToken++;
+        frameDoc(tab.doc);
+        setStatus(WHY_WISP_ONLY ? 'wisp' : 'idle');
+      } else if(tab.frameUrl){
+        navToken++;
+        showFrameUrl(frame, tab.frameUrl);
+        setStatus(WHY_WISP_ONLY ? 'wisp' : 'idle');
+      } else if(frame){
+        frame.__whyDoc = '';
+        try{ frame.removeAttribute('srcdoc'); }catch(e){}
+        dispatchTransport(tab.url);
+      }
     } else {
       if(home) home.classList.remove('hidden');
       if(frame) frame.classList.remove('active');
@@ -3900,7 +3947,8 @@
     }, 280);
   }
   function newTab(){
-    tabs.push({ title: 'New Tab', url: '', savedSrc: '' });
+    rememberTab();
+    tabs.push({ title: 'New Tab', url: '', savedSrc: '', doc: '', frameUrl: '' });
     activeTab = tabs.length - 1;
     updateTabs();
     animateOpenTab(activeTab);
@@ -3920,11 +3968,13 @@
     if(settings.labConfirmClose && tabs[i] && tabs[i].url && !confirm('close this tab?')) return;
     var pill = document.querySelector('.tab-pill[data-tab-index="' + i + '"]');
     var finish = function(){
+      var keep = tabs[activeTab];
       tabs.splice(i, 1);
-      if(i < activeTab) activeTab--;
+      var still = tabs.indexOf(keep);
+      if(still >= 0) activeTab = still;
       else if(activeTab >= tabs.length) activeTab = tabs.length - 1;
       updateTabs();
-      restoreTab(activeTab);
+      if(still < 0) restoreTab(activeTab);
       saveTabs();
     };
     if(!pill || motionReduced()){ finish(); return; }
@@ -3969,19 +4019,19 @@
 
   function closeOtherTabs(){
     if(tabs.length <= 1) return;
+    rememberTab();
     var pinned = tabs.filter(function(t){ return t.pinned; });
     var current = tabs[activeTab];
-    // keep pinned tabs + the current tab (unless current is pinned, dedupe)
     var keep = pinned.concat([current]).filter(function(t, idx, arr){ return arr.indexOf(t) === idx; });
     tabs = keep;
     activeTab = Math.max(0, tabs.indexOf(current));
     updateTabs();
-    restoreTab(activeTab);
     saveTabs();
     document.getElementById('tabDropdownMenu').classList.remove('open');
   }
 
   function closeAllTabs(){
+    rememberTab();
     var pinned = tabs.filter(function(t){ return t.pinned; });
     if(pinned.length === 0){
       tabs = [{ title: 'New Tab', url: '', savedSrc: '' }];
@@ -4000,9 +4050,10 @@
   }
 
   function duplicateTab(i){
+    rememberTab();
     var src = tabs[i] || tabs[activeTab];
     if(!src) return;
-    var copy = { title: src.title || 'New Tab', url: src.url || '', savedSrc: src.savedSrc || '' };
+    var copy = { title: src.title || 'New Tab', url: src.url || '', savedSrc: src.savedSrc || '', doc: src.doc || '', frameUrl: src.frameUrl || '' };
     tabs.splice(i + 1, 0, copy);
     activeTab = i + 1;
     updateTabs();
