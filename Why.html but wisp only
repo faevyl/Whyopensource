@@ -2,12 +2,9 @@
 <html lang="en" class="theme-chrome ui-chrome density-normal corners-soft type-sans">
 <head>
 <!--
-  note: ui for the why revived proxy. quiet shell, home,
-  tabs, bookmarks,
-  settings, themes, and search modes. This copy opens every page through Wisp.
+  note: normal why revived but only with wisp.
   public site: https://urbanshade.is-best.net/?i=1
-  public site: https://urbanshade.is-best.net/?i=1
-
+  public site: https://heading-moderate-consolidation-mechanical.trycloudflare.com/
   terms of service:
     - you may NOT share the proxy link publicly.
     - you may NOT sell this software or any part of it.
@@ -3775,19 +3772,12 @@
   }
 
   var BLANK_TAB_ICON = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="#80868b" d="M3.2 1.2h6.1L13 4.9V14.2c0 .4-.3.6-.6.6H3.2c-.3 0-.6-.3-.6-.6V1.8c0-.4.3-.6.6-.6z"/><path fill="#fff" d="M9 1.6v3.6h3.4"/></svg>');
-  function siteIconUrl(url){
-    try{
-      var parsed = new URL(url);
-      if(parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
-      return 'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + encodeURIComponent(parsed.origin) + '&size=32';
-    }catch(e){ return ''; }
-  }
   function siteIcon(url){
     var img = document.createElement('img');
     img.alt = '';
-    img.referrerPolicy = 'no-referrer';
-    img.src = siteIconUrl(url) || BLANK_TAB_ICON;
-    img.onerror = function(){ img.onerror = null; img.src = BLANK_TAB_ICON; };
+    var letter = '?';
+    try{ letter = (new URL(url).hostname.replace(/^www\./, '').charAt(0) || '?').toUpperCase(); }catch(e){}
+    img.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#3c4043"/><text x="16" y="22" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#e8eaed">' + letter + '</text></svg>');
     return img;
   }
 
