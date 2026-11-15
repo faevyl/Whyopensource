@@ -4,7 +4,7 @@ Why revived is the most advanced web proxy you can find, funded by nothing but s
 
 - Also with three diffrent web engines, Wisp, Fetch.php (does not bypass cors sadly), libcurl.js (does bypass cors.)
 Big creds to [ading2210](https://github.com/ading2210), who made [Sandstone](https://github.com/ading2210/sandstone), and to Nautilus Labs, who made Gust.
-
+- Note, i already have a free wisp embedded so if it stops working, start your own.
 The public copy of this branch is [WWWWWHHHHHYYYYY](https://github.com/faevyl/Whyopensource/tree/WWWWWHHHHHYYYYY).
 
 ## What you can do with it
