@@ -7,11 +7,21 @@
     (function () {
       var names = ["index.html", "Why.html", "whyrevived.html"];
       var frame = document.getElementById("app");
+      var base = new URL("./", location.href).href;
+      function show(html) {
+        if (!/<base\b/i.test(html)) {
+          if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, function (m) { return m + '<base href="' + base + '">'; });
+          else html = '<head><base href="' + base + '"></head>' + html;
+        }
+        // jsDelivr serves the HTML file as text/plain, so pointing the frame
+        // at that URL shows the source. srcdoc parses the same text as HTML.
+        frame.srcdoc = html;
+      }
       function next(i) {
         if (!frame || i >= names.length) return;
-        fetch(names[i], { method: "GET" }).then(function (res) {
+        fetch(names[i]).then(function (res) {
           if (!res.ok) { next(i + 1); return; }
-          frame.setAttribute("src", names[i]);
+          return res.text().then(show);
         }, function () { next(i + 1); });
       }
       next(0);
