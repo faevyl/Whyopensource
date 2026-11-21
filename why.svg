@@ -9,13 +9,14 @@
       var frame = document.getElementById("app");
       var base = new URL("./", location.href).href;
       function show(html) {
-        if (!/<base\b/i.test(html)) {
-          if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, function (m) { return m + '<base href="' + base + '">'; });
-          else html = '<head><base href="' + base + '"></head>' + html;
+        var head = html.match(/<head\b[^>]*>/i);
+        if (head && !/<base\b/i.test(html.slice(0, head.index + head[0].length + 400))) {
+          html = html.replace(head[0], head[0] + '<base href="' + base.replace(/"/g, "%22") + '">');
         }
-        // jsDelivr serves the HTML file as text/plain, so pointing the frame
-        // at that URL shows the source. srcdoc parses the same text as HTML.
-        frame.srcdoc = html;
+        // jsDelivr sends the HTML file as text/plain, so an iframe pointed at
+        // that URL shows the source. A text/html blob renders the same bytes.
+        var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        frame.src = URL.createObjectURL(blob);
       }
       function next(i) {
         if (!frame || i >= names.length) return;
