@@ -6,7 +6,7 @@ Why revived is the most advanced web proxy you can find, funded by nothing but s
 Big creds to [ading2210](https://github.com/ading2210), who made [Sandstone](https://github.com/ading2210/sandstone), and to Nautilus Labs, who made Gust.
 - Note, i already have a free wisp embedded so if it stops working, start your own.
 The public copy of this branch is [WWWWWHHHHHYYYYY](https://github.com/faevyl/Whyopensource/tree/WWWWWHHHHHYYYYY).
-- https://cdn.jsdelivr.net/gh/faevyl/Whyopensource@8ebc9e509d5a34c0aa8252e402f6f2fa2765d5cb/why.svg
+- https://cdn.jsdelivr.net/gh/faevyl/Whyopensource@129f43d063b94c7e718aae4b559e11ca6c4caef8/why.svg
 ## What you can do with it
 
 - Store downloads.
